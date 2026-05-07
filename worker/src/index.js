@@ -3,11 +3,11 @@ const jsonHeaders = {
 };
 
 const allowedChallenges = new Set([
-  "new-faces",
-  "detail-love",
-  "small-chaos",
-  "hands-only",
-  "golden-hour"
+  "01-new-faces",
+  "02-detail-love",
+  "03-small-chaos",
+  "04-hands-only",
+  "05-golden-hour"
 ]);
 
 export default {
@@ -86,7 +86,8 @@ async function handleUpload(request, env) {
   const extension = extensionFromMime(photo.type);
   const now = new Date();
   const safeName = randomId();
-  const key = `${challengeId}/${now.toISOString().slice(0, 10)}/${Date.now()}-${safeName}.${extension}`;
+  const nameSlug = name ? name.replace(/[^a-zA-Z0-9äöüÄÖÜß-]/g, "_").slice(0, 30) : "anon";
+  const key = `${challengeId}/${now.toISOString().slice(0, 10)}/${nameSlug}-${Date.now()}-${safeName}.${extension}`;
 
   await env.PHOTOS_BUCKET.put(key, photo.stream(), {
     httpMetadata: {

@@ -28,35 +28,35 @@ function getRoute() {
 // ================================================================
 const challenges = [
   {
-    id: "new-faces",
+    id: "01-new-faces",
     emoji: "🆕",
     title: "New Faces",
     desc: "Macht ein Foto mit jemandem, den ihr heute neu kennengelernt habt.",
     detail: "Ein kurzer Moment, ein neues Gesicht, schöne Gespräche.",
   },
   {
-    id: "detail-love",
+    id: "02-detail-love",
     emoji: "✨",
     title: "Detail Love",
     desc: "Fotografiert ein schönes Party‑Detail.",
     detail: "Deko, Drinks, Essen, Licht, Blumen – die kleinen Dinge machen den Abend besonders.",
   },
   {
-    id: "small-chaos",
+    id: "03-small-chaos",
     emoji: "🎭",
     title: "Small Chaos",
     desc: "Gruppenfoto: Alle machen gleichzeitig etwas anderes.",
     detail: "Lachen, reden, tanzen, schauen, winken. Perfektion verboten – Chaos erlaubt.",
   },
   {
-    id: "hands-only",
+    id: "04-hands-only",
     emoji: "🤝",
     title: "Hands Only",
     desc: "Nur Hände im Bild.",
     detail: "Hands‑up, Handschlag, Kaffeebecher...",
   },
   {
-    id: "golden-hour",
+    id: "05-golden-hour",
     emoji: "🌅",
     title: "Golden Hour",
     desc: "Das Licht ist perfekt – ihr auch.",
@@ -161,6 +161,33 @@ function Toast({ message, visible }) {
 }
 
 // ================================================================
+// RESET TITLE — 5x tap on title resets progress (hidden dev feature)
+// ================================================================
+function ResetTitle({ onReset }) {
+  const taps = useRef(0);
+  const timer = useRef(null);
+
+  function handleTap() {
+    taps.current++;
+    if (timer.current) clearTimeout(timer.current);
+    if (taps.current >= 5) {
+      taps.current = 0;
+      onReset();
+      return;
+    }
+    timer.current = setTimeout(() => { taps.current = 0; }, 1500);
+  }
+
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  return (
+    <p className="event-title" onClick={handleTap} style={{ cursor: "default" }}>
+      12&nbsp;½&nbsp;Jahre Adams&nbsp;Family
+    </p>
+  );
+}
+
+// ================================================================
 // HOME PAGE
 // ================================================================
 function HomePage() {
@@ -168,10 +195,17 @@ function HomePage() {
   const [active, setActive] = useState(null);
   const [toast, setToast] = useState(null);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [userName, setUserName] = useState("");
+  const [nameConfirmed, setNameConfirmed] = useState(false);
   const prevCompleted = useRef(0);
   const toastTimer = useRef(null);
 
   useEffect(() => {
+    const savedName = localStorage.getItem("userName");
+    if (savedName) {
+      setUserName(savedName);
+      setNameConfirmed(true);
+    }
     const saved = localStorage.getItem("progress");
     if (saved) {
       try {
@@ -221,32 +255,93 @@ function HomePage() {
     [showToast]
   );
 
+  function confirmName() {
+    const trimmed = userName.trim();
+    if (!trimmed) return;
+    localStorage.setItem("userName", trimmed);
+    setUserName(trimmed);
+    setNameConfirmed(true);
+  }
+
+  function handleReset() {
+    setDone({});
+    setNameConfirmed(false);
+    setUserName("");
+    localStorage.removeItem("userName");
+    localStorage.removeItem("progress");
+    showToast("Progress zurückgesetzt");
+  }
+
+  if (!nameConfirmed) {
+    return (
+      <main className="container">
+        <p className="event-title">12&nbsp;½&nbsp;Jahre Adams&nbsp;Family</p>
+
+        <section className="hero fade-in">
+          <h1>
+            5&nbsp;Momente.
+            <br />
+            1&nbsp;Abend.
+            <br />
+            Deine&nbsp;Fotos.
+          </h1>
+          <p className="sub">Foto‑Challenge für Arienne&nbsp;&amp;&nbsp;Andy</p>
+          <p className="text">
+            Sammle spontane Augenblicke, echte Begegnungen und kleine Details – ganz ohne Druck.
+          </p>
+        </section>
+
+        <section className="name-section fade-in" style={{ animationDelay: "0.1s" }}>
+          <label className="name-label" htmlFor="userName">Wie heißt du?</label>
+          <p className="name-hint">Dein Name erscheint auf deinen Fotos, damit Arienne &amp; Andy wissen, von wem sie sind.</p>
+          <input
+            id="userName"
+            className="name-input"
+            type="text"
+            placeholder="Dein Name"
+            value={userName}
+            onChange={(e) => setUserName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && confirmName()}
+            maxLength={40}
+            autoFocus
+            autoComplete="off"
+          />
+          <button className="btn-full btn-primary" onClick={confirmName} disabled={!userName.trim()}>
+            Los geht's!
+          </button>
+        </section>
+
+        <footer className="credit">Made with ♥ by Yves</footer>
+      </main>
+    );
+  }
+
   return (
     <main className="container">
       <Confetti active={showConfetti} />
       <Toast message={toast} visible={!!toast} />
 
-      <p className="event-title">12&nbsp;½&nbsp;Jahre Adams&nbsp;Family</p>
+      <ResetTitle onReset={handleReset} />
 
       <section className="hero fade-in">
         <h1>
           5&nbsp;Momente.
           <br />
-          Ein&nbsp;Abend.
+          1&nbsp;Abend.
           <br />
-          Eure&nbsp;Erinnerungen.
+          Deine&nbsp;Fotos.
         </h1>
-        <p className="sub">Willkommen zur Foto‑Challenge!</p>
+        <p className="sub">Foto‑Challenge für Arienne&nbsp;&amp;&nbsp;Andy</p>
         <p className="text">
-          Sammelt spontane Augenblicke, echte Begegnungen und kleine Details – ganz ohne Druck.
+          Sammle spontane Augenblicke, echte Begegnungen und kleine Details – ganz ohne Druck.
         </p>
       </section>
 
       <section className="steps fade-in" style={{ animationDelay: "0.1s" }}>
         <p className="steps-heading">So einfach geht's:</p>
         <ol className="steps-list">
-          <li>Erledigt die 5 Foto‑Challenges</li>
-          <li>Ladet eure Bilder direkt hier hoch</li>
+          <li>Erledige die 5 Foto‑Challenges</li>
+          <li>Lade deine Bilder direkt hier hoch</li>
         </ol>
         <p className="hint">👉 Es gibt kein „richtig" oder „falsch" – nur schöne Momente.</p>
       </section>
@@ -286,16 +381,18 @@ function HomePage() {
         <div className="completed-msg fade-in">
           <PartyPopper size={28} />
           <p>
-            Ihr habt alle Challenges gemeistert!
+            Du hast alle Challenges gemeistert!
             <br />
-            Danke für eure tollen Momente.
+            Danke für deine tollen Momente.
           </p>
         </div>
       )}
 
       {active && (
-        <UploadModal challenge={active} onClose={() => setActive(null)} onSuccess={handleUploadSuccess} />
+        <UploadModal challenge={active} onClose={() => setActive(null)} onSuccess={handleUploadSuccess} userName={userName} />
       )}
+
+      <footer className="credit">Made with ♥ by Yves</footer>
     </main>
   );
 }
@@ -303,7 +400,7 @@ function HomePage() {
 // ================================================================
 // UPLOAD MODAL
 // ================================================================
-function UploadModal({ challenge, onClose, onSuccess }) {
+function UploadModal({ challenge, onClose, onSuccess, userName }) {
   const cameraRef = useRef();
   const galleryRef = useRef();
   const [uploading, setUploading] = useState(false);
@@ -342,6 +439,7 @@ function UploadModal({ challenge, onClose, onSuccess }) {
       const form = new FormData();
       form.append("photo", selectedFile);
       form.append("challengeId", challenge.id);
+      form.append("name", userName || "");
 
       const res = await fetch(`${API_BASE}/upload`, { method: "POST", body: form });
 

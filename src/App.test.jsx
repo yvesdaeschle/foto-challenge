@@ -53,19 +53,19 @@ describe("Routing", () => {
   it("shows landing page on root path", () => {
     mockPathname("/");
     render(<App />);
-    expect(screen.getByText(/Bitte scannt den QR‑Code/)).toBeInTheDocument();
+    expect(screen.getByText(/Bitte scannt den QR\u2011Code/)).toBeInTheDocument();
   });
 
   it("shows Foto-Challenge heading on landing", () => {
     mockPathname("/");
     render(<App />);
-    expect(screen.getByText("Foto‑Challenge")).toBeInTheDocument();
+    expect(screen.getByText("Foto\u2011Challenge")).toBeInTheDocument();
   });
 
   it("shows home page on /125", () => {
     mockPathname("/125");
     render(<App />);
-    expect(screen.getByText(/Willkommen zur Foto‑Challenge/)).toBeInTheDocument();
+    expect(screen.getByText(/Foto\u2011Challenge f\u00fcr Arienne/)).toBeInTheDocument();
   });
 
   it("shows admin login on /admin", () => {
@@ -78,13 +78,13 @@ describe("Routing", () => {
   it("shows landing for unknown paths", () => {
     mockPathname("/random");
     render(<App />);
-    expect(screen.getByText(/Bitte scannt den QR‑Code/)).toBeInTheDocument();
+    expect(screen.getByText(/Bitte scannt den QR\u2011Code/)).toBeInTheDocument();
   });
 
   it("handles trailing slash on /125/", () => {
     mockPathname("/125/");
     render(<App />);
-    expect(screen.getByText(/Willkommen zur Foto‑Challenge/)).toBeInTheDocument();
+    expect(screen.getByText(/Foto\u2011Challenge f\u00fcr Arienne/)).toBeInTheDocument();
   });
 });
 
@@ -95,12 +95,25 @@ describe("HomePage", () => {
     mockPathname("/125");
   });
 
+function setNameAndProgress(progress) {
+    localStorage.setItem("userName", "TestUser");
+    if (progress) localStorage.setItem("progress", JSON.stringify(progress));
+  }
+
+  it("shows name input when no name saved", () => {
+    render(<App />);
+    expect(screen.getByText("Wie heißt du?")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Dein Name")).toBeInTheDocument();
+  });
+
   it("renders event title", () => {
+    setNameAndProgress();
     render(<App />);
     expect(screen.getByText(/12\s*½\s*Jahre Adams\s*Family/)).toBeInTheDocument();
   });
 
   it("renders all 5 challenges", () => {
+    setNameAndProgress();
     render(<App />);
     expect(screen.getByText("New Faces")).toBeInTheDocument();
     expect(screen.getByText("Detail Love")).toBeInTheDocument();
@@ -110,46 +123,44 @@ describe("HomePage", () => {
   });
 
   it("shows 0/5 progress initially", () => {
+    setNameAndProgress();
     render(<App />);
     expect(screen.getByText("0 / 5 erledigt")).toBeInTheDocument();
   });
 
-  it("shows steps with numbered list", () => {
-    render(<App />);
+  it("shows steps with numbered list", () => {    setNameAndProgress();    render(<App />);
     expect(screen.getByText("So einfach geht's:")).toBeInTheDocument();
-    expect(screen.getByText("Erledigt die 5 Foto‑Challenges")).toBeInTheDocument();
+    expect(screen.getByText("Erledige die 5 Foto‑Challenges")).toBeInTheDocument();
   });
 
   it("persists progress to localStorage", () => {
-    localStorage.setItem("progress", JSON.stringify({ "new-faces": true }));
+    setNameAndProgress({ "01-new-faces": true });
     render(<App />);
     const saved = JSON.parse(localStorage.getItem("progress"));
-    expect(saved["new-faces"]).toBe(true);
+    expect(saved["01-new-faces"]).toBe(true);
   });
 
   it("restores progress from localStorage", () => {
-    localStorage.setItem("progress", JSON.stringify({ "new-faces": true, "detail-love": true }));
+    setNameAndProgress({ "01-new-faces": true, "02-detail-love": true });
     render(<App />);
     expect(screen.getByText("2 / 5 erledigt")).toBeInTheDocument();
   });
 
   it("shows completion message when all 5 done", () => {
-    localStorage.setItem(
-      "progress",
-      JSON.stringify({
-        "new-faces": true,
-        "detail-love": true,
-        "small-chaos": true,
-        "hands-only": true,
-        "golden-hour": true,
-      })
-    );
+    setNameAndProgress({
+      "01-new-faces": true,
+      "02-detail-love": true,
+      "03-small-chaos": true,
+      "04-hands-only": true,
+      "05-golden-hour": true,
+    });
     render(<App />);
     expect(screen.getByText(/Alle geschafft/)).toBeInTheDocument();
-    expect(screen.getByText(/Ihr habt alle Challenges gemeistert/)).toBeInTheDocument();
+    expect(screen.getByText(/Du hast alle Challenges gemeistert/)).toBeInTheDocument();
   });
 
   it("opens upload modal when clicking Foto aufnehmen", () => {
+    setNameAndProgress();
     render(<App />);
     fireEvent.click(screen.getAllByText("Foto aufnehmen")[0]);
     expect(screen.getByText("Aus Galerie wählen")).toBeInTheDocument();
@@ -157,6 +168,7 @@ describe("HomePage", () => {
   });
 
   it("closes upload modal when clicking Abbrechen", () => {
+    setNameAndProgress();
     render(<App />);
     fireEvent.click(screen.getAllByText("Foto aufnehmen")[0]);
     expect(screen.getByText("Abbrechen")).toBeInTheDocument();
@@ -165,6 +177,7 @@ describe("HomePage", () => {
   });
 
   it("handles corrupt localStorage gracefully", () => {
+    localStorage.setItem("userName", "TestUser");
     localStorage.setItem("progress", "not-valid-json{{{");
     render(<App />);
     expect(screen.getByText("0 / 5 erledigt")).toBeInTheDocument();
@@ -179,6 +192,7 @@ describe("UploadModal", () => {
   });
 
   it("shows preview after file selection", async () => {
+    localStorage.setItem("userName", "TestUser");
     render(<App />);
     fireEvent.click(screen.getAllByText("Foto aufnehmen")[0]);
 
@@ -205,6 +219,7 @@ describe("UploadModal", () => {
       json: () => Promise.resolve({ error: "Server error" }),
     });
 
+    localStorage.setItem("userName", "TestUser");
     render(<App />);
     fireEvent.click(screen.getAllByText("Foto aufnehmen")[0]);
 
@@ -229,6 +244,7 @@ describe("UploadModal", () => {
   it("calls fetch with correct form data on upload", async () => {
     global.fetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true }) });
 
+    localStorage.setItem("userName", "TestUser");
     render(<App />);
     fireEvent.click(screen.getAllByText("Foto aufnehmen")[0]);
 
@@ -252,6 +268,7 @@ describe("UploadModal", () => {
   });
 
   it("locks body scroll when modal is open", () => {
+    localStorage.setItem("userName", "TestUser");
     render(<App />);
     fireEvent.click(screen.getAllByText("Foto aufnehmen")[0]);
     expect(document.body.style.overflow).toBe("hidden");
@@ -290,7 +307,7 @@ describe("AdminPage", () => {
       json: () =>
         Promise.resolve({
           photos: [
-            { key: "new-faces/2026-05-07/test.jpg", challengeId: "new-faces", originalName: "test.jpg", size: 1024 },
+            { key: "01-new-faces/2026-05-07/test.jpg", challengeId: "01-new-faces", originalName: "test.jpg", size: 1024 },
           ],
         }),
     });
@@ -313,8 +330,8 @@ describe("AdminPage", () => {
       json: () =>
         Promise.resolve({
           photos: [
-            { key: "new-faces/a.jpg", challengeId: "new-faces", size: 5242880 },
-            { key: "detail-love/b.jpg", challengeId: "detail-love", size: 3145728 },
+            { key: "01-new-faces/a.jpg", challengeId: "01-new-faces", size: 5242880 },
+            { key: "02-detail-love/b.jpg", challengeId: "02-detail-love", size: 3145728 },
           ],
         }),
     });
@@ -352,6 +369,7 @@ describe("AdminPage", () => {
 describe("Challenges", () => {
   it("has exactly 5 challenges with unique IDs", () => {
     mockPathname("/125");
+    localStorage.setItem("userName", "TestUser");
     render(<App />);
     expect(screen.getByText("New Faces")).toBeInTheDocument();
     expect(screen.getByText("Detail Love")).toBeInTheDocument();
@@ -362,6 +380,7 @@ describe("Challenges", () => {
 
   it("shows challenge descriptions", () => {
     mockPathname("/125");
+    localStorage.setItem("userName", "TestUser");
     render(<App />);
     expect(screen.getByText(/Macht ein Foto mit jemandem/)).toBeInTheDocument();
     expect(screen.getByText(/Fotografiert ein schönes Party/)).toBeInTheDocument();

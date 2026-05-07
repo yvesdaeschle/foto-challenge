@@ -1,21 +1,20 @@
-@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,700;1,6..96,400&family=Lora:ital,wght@0,400;0,600;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,700;1,6..96,400&family=Inter:wght@400;600;700&display=swap');
 
 :root {
   --yellow: #F4B324;
-  --yellow-dark: #d99b0e;
+  --yellow-dark: #b8860b;
   --yellow-light: #fff8e1;
   --white: #FFFFFF;
-  --ink: #1A1A1A;
-  --muted: #5d5144;
-  --green: #4CAF50;
+  --ink: #111111;
+  --muted: #3d3529;
+  --green: #388E3C;
   --green-bg: #edf7ee;
-  --line: rgba(26, 26, 26, 0.1);
-  --shadow: 0 8px 28px rgba(60, 38, 0, 0.10);
-  --shadow-lg: 0 16px 48px rgba(60, 38, 0, 0.16);
+  --line: rgba(17, 17, 17, 0.12);
+  --shadow: 0 8px 28px rgba(60, 38, 0, 0.12);
+  --shadow-lg: 0 16px 48px rgba(60, 38, 0, 0.18);
   --radius: 20px;
-  --stripe-width: 48px;
 
-  font-family: 'Lora', Georgia, serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -169,11 +168,13 @@ body {
 
 .progress-bar {
   position: absolute;
-  inset: 3px;
-  right: auto;
-  background: var(--yellow);
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  background: var(--green);
   border-radius: 999px;
   transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  max-width: calc(100% - 6px);
 }
 
 .progress-label {
@@ -710,7 +711,7 @@ button:disabled {
 
 .gallery-zoom {
   position: absolute;
-  bottom: 4px;
+  bottom: 22px;
   right: 4px;
   background: rgba(0, 0, 0, 0.45);
   color: white;
@@ -722,6 +723,22 @@ button:disabled {
   justify-content: center;
   opacity: 0;
   transition: opacity 0.2s;
+}
+
+.thumb-name {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  font-size: 10px;
+  padding: 2px 4px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'Inter', system-ui, sans-serif;
 }
 
 .gallery-thumb:hover .gallery-zoom,

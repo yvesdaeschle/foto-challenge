@@ -1,281 +1,67 @@
-# 📸 Photo Challenge Web App
+# 📸 Foto-Challenge — 12½ Jahre Adams Family
 
-Eine mobile-first Web-App für Events / Partys, bei der Gäste Fotos zu vorgegebenen Challenges aufnehmen und hochladen können.  
-Alle Bilder werden in Cloudflare R2 gespeichert und können über eine Admin-Seite gesammelt als ZIP heruntergeladen werden.
+Foto-Challenge Web-App für die Party von Arienne & Andy. Gäste fotografieren 5 Challenges und laden die Bilder direkt hoch.
 
----
+## Tech Stack
 
-# 🚀 Tech Stack
+- **Frontend:** React + Vite, gehostet auf Cloudflare Pages
+- **Backend:** Cloudflare Worker + R2 Storage
+- **Fonts:** Bodoni Moda + Lora (Google Fonts)
 
-## Frontend
-- React (Vite)
-- JavaScript
-- Custom CSS
-- Lucide Icons
+## URLs
 
-## Backend
-- Cloudflare Workers (API)
-- Cloudflare R2 (Storage)
+| Seite | Pfad |
+|-------|------|
+| Landing (QR-Hinweis) | `/` |
+| Challenge-App | `/125` |
+| Admin-Galerie | `/admin` |
 
-## Hosting
-- Cloudflare Pages (Frontend)
-- Cloudflare Workers (Backend API)
-
----
-
-# 📁 Projektstruktur
-
-```
-foto-challenge/
-├── index.html
-├── package.json
-├── vite.config.js
-├── src/
-│   ├── main.jsx
-│   ├── App.jsx
-│   └── style.css
-│
-└── worker/
-    ├── wrangler.toml
-    └── src/
-        └── index.js
-```
-
----
-
-# ⚙️ Environment Variablen
-
-## Cloudflare Pages
+## Setup
 
 ```bash
+npm install
+npm run dev          # Frontend lokal starten
+npm run build        # Production Build
+npm test             # Tests ausführen
+```
+
+### Environment-Variablen
+
+**Cloudflare Pages:**
+```
 VITE_API_BASE_URL=https://your-worker.workers.dev
 ```
 
-## Cloudflare Worker
-
-```bash
-ALLOWED_ORIGIN=https://your-app.pages.dev
-MAX_FILE_SIZE_MB=12
+**Cloudflare Worker (wrangler.toml / Secrets):**
 ```
-
-## Secret
-
-```bash
+ALLOWED_ORIGIN=https://foto-challenge.pages.dev
+MAX_FILE_SIZE_MB=12
 wrangler secret put ADMIN_TOKEN
 ```
 
----
+## Progress zurücksetzen
 
-# 🧠 Architektur
+Es gibt zwei Wege, den Fortschritt eines Benutzers zurückzusetzen:
 
+### 1. Versteckter Reset (in der App)
+
+Auf der Challenge-Seite (`/125`) **5× schnell hintereinander** auf den Titel „12½ Jahre Adams Family" tippen (innerhalb von 1,5 Sekunden). Dadurch werden:
+
+- Alle abgehakten Challenges zurückgesetzt
+- Der gespeicherte Name gelöscht
+- Die Namenseingabe erscheint erneut
+
+Es erscheint ein Toast „Progress zurückgesetzt".
+
+### 2. Manuell (Browser)
+
+In den Browser-DevTools → Application → Local Storage → die Einträge `progress` und `userName` löschen, dann Seite neu laden.
+
+## Admin
+
+Unter `/admin` mit dem Admin-Token anmelden. Die Galerie zeigt alle Fotos nach Challenge sortiert. Fotos können einzeln oder als ZIP (pro Kategorie oder alle) heruntergeladen werden.
+
+Die Dateinamen im R2-Storage enthalten den Namen des Fotografen:
 ```
-User (Smartphone)
-        ↓
-Cloudflare Pages (React App)
-        ↓
-Cloudflare Worker API
-        ↓
-R2 Storage (Images)
-```
-
----
-
-# 📸 Features
-
-## ✅ User
-
-- Kamera direkt öffnen 📸  
-- Galerie auswählen 🖼️  
-- ✅ Auto-Upload (kein Upload Button!)  
-- Fortschritt (5 Challenges)  
-- grüne Karten wenn erledigt  
-- Upload-Zähler pro Challenge  
-
----
-
-## ✅ Admin
-
-- Login via Token (`/admin`)
-- ✅ ZIP Download aller Bilder
-- Bilder nach Challenge sortiert im ZIP
-
----
-
-# 🎯 Challenges
-
-```js
-[
-  "new-faces",
-  "detail-love",
-  "small-chaos",
-  "hands-only",
-  "golden-hour"
-]
-```
-
----
-
-# 🔌 API Endpoints
-
-## POST `/upload`
-
-Upload eines Bildes
-
-```
-multipart/form-data:
-- photo
-- challengeId
-```
-
----
-
-## GET `/photos`
-🔒 Admin only
-
-```json
-{
-  "photos": [
-    { "key": "new-faces/123.jpg" }
-  ]
-}
-```
-
----
-
-## GET `/photo/:key`
-➡️ öffentlich
-
-→ liefert ein Bild
-
----
-
-## GET `/photos-by-challenge`
-
-```json
-{
-  "grouped": {
-    "new-faces": [...],
-    "detail-love": [...]
-  }
-}
-```
-
----
-
-## ✅ GET `/zip`
-🔒 Admin only
-
-→ lädt ZIP Datei:
-
-```
-foto-challenge.zip
- ├── new-faces/
- ├── detail-love/
-```
-
----
-
-# 📱 UX Verhalten
-
-## Upload Flow
-
-```
-User klickt "Foto"
-→ Kamera oder Galerie öffnet sich
-→ Bild wird gewählt
-→ Upload passiert automatisch
-→ Modal schließt
-→ Challenge = erledigt
-```
-
-👉 KEIN Upload Button bewusst!
-
----
-
-# 🎨 UI Prinzipien
-
-- Mobile first
-- so wenig Klicks wie möglich
-- visuelles Feedback > Text
-- große Touch Buttons
-- einfache Struktur
-
----
-
-# 🔒 Sicherheit
-
-| Route | Zugriff |
-|------|--------|
-| /upload | öffentlich |
-| /photos-by-challenge | öffentlich |
-| /photo/:key | öffentlich |
-| /photos | 🔒 Admin |
-| /zip | 🔒 Admin |
-
----
-
-# 📦 Storage Struktur
-
-```
-challengeId/file.jpg
-```
-
-Beispiel:
-
-```
-new-faces/1715093847.jpg
-```
-
----
-
-# 🚀 Deployment
-
-## Frontend (Pages)
-
-```
-Build: npm run build
-Output: dist
-```
-
----
-
-## Backend (Worker)
-
-```bash
-cd worker
-npx wrangler deploy
-```
-
----
-
-# 🧩 Design Entscheidungen
-
-## ❓ Warum kein Upload Button?
-
-→ bessere mobile UX  
-→ schneller  
-→ wirkt wie native App  
-
----
-
-## ❓ Warum `/photo` öffentlich?
-
-→ `<img>` kann keine Token senden  
-
----
-
-## ❓ Warum ZIP im Worker?
-
-→ 1 Klick Download  
-→ kein manuelles Speichern nötig  
-
-
----
-
-# ✅ Status
-
-```
-✅ Production Ready
-✅ Mobile Optimized
-✅ Event Ready
+01-new-faces/MaxMustermann-1752345678-abc123.jpg
 ```

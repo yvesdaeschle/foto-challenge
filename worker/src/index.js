@@ -87,7 +87,7 @@ async function handleUpload(request, env) {
   const now = new Date();
   const safeName = randomId();
   const nameSlug = name ? name.replace(/[^a-zA-Z0-9äöüÄÖÜß-]/g, "_").slice(0, 30) : "anon";
-  const key = `${challengeId}/${now.toISOString().slice(0, 10)}/${nameSlug}-${Date.now()}-${safeName}.${extension}`;
+  const key = `${challengeId}/${nameSlug}-${Date.now()}-${safeName}.${extension}`;
 
   await env.PHOTOS_BUCKET.put(key, photo.stream(), {
     httpMetadata: {

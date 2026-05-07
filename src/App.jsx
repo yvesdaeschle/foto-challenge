@@ -197,7 +197,7 @@ function HomePage() {
   const [showConfetti, setShowConfetti] = useState(false);
   const [userName, setUserName] = useState("");
   const [nameConfirmed, setNameConfirmed] = useState(false);
-  const prevCompleted = useRef(0);
+  const prevCompleted = useRef(-1);
   const toastTimer = useRef(null);
 
   useEffect(() => {
@@ -225,7 +225,12 @@ function HomePage() {
   const completed = Object.values(done).filter(Boolean).length;
 
   useEffect(() => {
-    if (completed === 5 && prevCompleted.current < 5) {
+    if (prevCompleted.current === -1) {
+      // Skip initial render / localStorage restore
+      prevCompleted.current = completed;
+      return;
+    }
+    if (completed > prevCompleted.current) {
       setShowConfetti(true);
       const timer = setTimeout(() => setShowConfetti(false), 4500);
       prevCompleted.current = completed;
@@ -807,6 +812,7 @@ function AdminPage() {
                   <span className="gallery-zoom">
                     <ZoomIn size={14} />
                   </span>
+                  <span className="thumb-name">{photo.name || photo.key.split("/").pop()}</span>
                 </button>
               ))}
             </div>

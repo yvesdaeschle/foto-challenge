@@ -281,9 +281,9 @@ function HomePage() {
           <h1>
             5&nbsp;Momente.
             <br />
-            1&nbsp;Abend.
+            Ein&nbsp;Abend.
             <br />
-            Deine&nbsp;Fotos.
+            Eure&nbsp;Erinnerungen.
           </h1>
           <p className="sub">Foto‑Challenge für Arienne&nbsp;&amp;&nbsp;Andy</p>
           <p className="text">
@@ -327,9 +327,9 @@ function HomePage() {
         <h1>
           5&nbsp;Momente.
           <br />
-          1&nbsp;Abend.
+          Ein&nbsp;Abend.
           <br />
-          Deine&nbsp;Fotos.
+          Eure&nbsp;Erinnerungen.
         </h1>
         <p className="sub">Foto‑Challenge für Arienne&nbsp;&amp;&nbsp;Andy</p>
         <p className="text">

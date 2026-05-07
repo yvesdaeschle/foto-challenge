@@ -35,14 +35,7 @@ html {
 }
 
 body {
-  background:
-    repeating-linear-gradient(
-      90deg,
-      var(--yellow) 0,
-      var(--yellow) var(--stripe-width),
-      var(--white) var(--stripe-width),
-      var(--white) calc(var(--stripe-width) * 2)
-    );
+  background: var(--yellow);
   min-height: 100dvh;
   overscroll-behavior-y: contain;
 }

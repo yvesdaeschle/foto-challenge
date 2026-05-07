@@ -88,28 +88,45 @@ function LandingRedirect() {
 // CELEBRATION — Full-screen animated overlay on challenge complete
 // ================================================================
 function Celebration() {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const colors = ["#F4B324", "#ff6b6b", "#4ecdc4", "#45b7d1", "#ff9ff3", "#a29bfe", "#55efc4", "#fab1a0"];
+
+    for (let i = 0; i < 40; i++) {
+      const piece = document.createElement("span");
+      piece.className = i % 2 === 0 ? "confetti-piece" : "confetti-piece confetti-round";
+      piece.style.left = `${50 + (Math.random() - 0.5) * 20}%`;
+      piece.style.bottom = "40%";
+      piece.style.background = colors[i % 8];
+      container.appendChild(piece);
+
+      piece.animate(
+        [
+          { transform: "translate(0,0) rotate(0deg) scale(1)", opacity: 1 },
+          {
+            transform: `translate(${(Math.random() - 0.5) * 100}vw, ${-60 - Math.random() * 40}vh) rotate(${Math.random() * 720 - 360}deg) scale(0.5)`,
+            opacity: 0,
+          },
+        ],
+        {
+          duration: (0.8 + Math.random() * 1.2) * 1000,
+          delay: Math.random() * 300,
+          easing: "cubic-bezier(0.2, 0.8, 0.3, 1)",
+          fill: "forwards",
+        }
+      );
+    }
+  }, []);
+
   return (
-    <div className="celebration-overlay">
+    <div className="celebration-overlay" ref={containerRef}>
       <div className="celebration-content">
         <span className="celebration-emoji">🎉</span>
         <p className="celebration-text">Geschafft!</p>
       </div>
-      {Array.from({ length: 40 }, (_, i) => (
-        <span
-          key={i}
-          className="confetti-piece"
-          style={{
-            "--x": `${(Math.random() - 0.5) * 100}vw`,
-            "--y": `${-60 - Math.random() * 40}vh`,
-            "--r": `${Math.random() * 720 - 360}deg`,
-            "--d": `${0.8 + Math.random() * 1.2}s`,
-            "--delay": `${Math.random() * 0.3}s`,
-            "--color": ["#F4B324", "#ff6b6b", "#4ecdc4", "#45b7d1", "#ff9ff3", "#a29bfe", "#55efc4", "#fab1a0"][i % 8],
-            left: `${50 + (Math.random() - 0.5) * 20}%`,
-            bottom: "10%",
-          }}
-        />
-      ))}
     </div>
   );
 }
@@ -208,13 +225,18 @@ function HomePage() {
 
   const handleUploadSuccess = useCallback(
     (challengeId) => {
-      setDone((d) => ({ ...d, [challengeId]: true }));
+      setDone((d) => {
+        const next = { ...d, [challengeId]: true };
+        // Trigger celebration only when all 5 challenges are done
+        if (challenges.every((c) => next[c.id])) {
+          if (confettiTimer.current) clearTimeout(confettiTimer.current);
+          setConfettiKey((k) => k + 1);
+          confettiTimer.current = setTimeout(() => setConfettiKey(0), 5500);
+        }
+        return next;
+      });
       setActive(null);
       showToast("Foto hochgeladen!");
-      // Trigger celebration
-      if (confettiTimer.current) clearTimeout(confettiTimer.current);
-      setConfettiKey((k) => k + 1);
-      confettiTimer.current = setTimeout(() => setConfettiKey(0), 5500);
     },
     [showToast]
   );

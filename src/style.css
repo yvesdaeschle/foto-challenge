@@ -558,12 +558,10 @@ button:disabled {
   position: absolute;
   width: 10px;
   height: 10px;
-  background: var(--color);
   border-radius: 2px;
-  animation: confetti-burst var(--d) cubic-bezier(0.2, 0.8, 0.3, 1) var(--delay) both;
 }
 
-.confetti-piece:nth-child(odd) {
+.confetti-round {
   border-radius: 50%;
   width: 8px;
   height: 8px;
@@ -587,16 +585,7 @@ button:disabled {
   100% { transform: scale(1) rotate(0deg); }
 }
 
-@keyframes confetti-burst {
-  0% {
-    transform: translate(0, 0) rotate(0deg) scale(1);
-    opacity: 1;
-  }
-  100% {
-    transform: translate(var(--x), var(--y)) rotate(var(--r)) scale(0.5);
-    opacity: 0;
-  }
-}
+/* confetti animated via Web Animations API */
 
 /* ==================== ERROR ==================== */
 

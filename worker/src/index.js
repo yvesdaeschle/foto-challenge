@@ -234,7 +234,6 @@ function randomId() {
 }
 
 function downloadFileName(object, key) {
-  const metadata = object.customMetadata || {};
-  const originalName = metadata.originalName || key.split("/").pop() || "foto.jpg";
-  return originalName.replace(/["\\/]/g, "_");
+  const name = key.split("/").pop() || "foto.jpg";
+  return name.replace(/["\\/]/g, "_");
 }

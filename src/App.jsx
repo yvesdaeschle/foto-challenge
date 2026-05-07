@@ -98,42 +98,72 @@ function Confetti({ active }) {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    const colors = ["#f7b52c", "#ff6b6b", "#4ecdc4", "#45b7d1", "#96ceb4", "#ffeaa7", "#dfe6e9", "#fd79a8"];
-    const pieces = Array.from({ length: 120 }, () => ({
-      x: Math.random() * canvas.width,
-      y: Math.random() * -canvas.height,
-      w: 6 + Math.random() * 8,
-      h: 4 + Math.random() * 6,
-      color: colors[Math.floor(Math.random() * colors.length)],
-      vy: 2 + Math.random() * 4,
-      vx: (Math.random() - 0.5) * 3,
-      rot: Math.random() * 360,
-      vr: (Math.random() - 0.5) * 8,
-    }));
+    const colors = ["#F4B324", "#ff6b6b", "#4ecdc4", "#45b7d1", "#ff9ff3", "#ffeaa7", "#fd79a8", "#a29bfe", "#55efc4", "#fab1a0"];
+    const shapes = ["rect", "circle", "star"];
+    const cx = canvas.width / 2;
+    const cy = canvas.height * 0.85;
+
+    const pieces = Array.from({ length: 180 }, () => {
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.2;
+      const speed = 8 + Math.random() * 14;
+      return {
+        x: cx + (Math.random() - 0.5) * 40,
+        y: cy,
+        w: 5 + Math.random() * 10,
+        h: 4 + Math.random() * 8,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        vx: Math.cos(angle) * speed + (Math.random() - 0.5) * 4,
+        vy: Math.sin(angle) * speed,
+        rot: Math.random() * 360,
+        vr: (Math.random() - 0.5) * 12,
+        shape: shapes[Math.floor(Math.random() * shapes.length)],
+        gravity: 0.18 + Math.random() * 0.08,
+        drag: 0.985 + Math.random() * 0.01,
+      };
+    });
 
     let frame;
     let alpha = 1;
-    const fadeStart = Date.now() + 2500;
+    const fadeStart = Date.now() + 2000;
 
     function draw() {
       const now = Date.now();
-      if (now > fadeStart) alpha = Math.max(0, 1 - (now - fadeStart) / 1500);
+      if (now > fadeStart) alpha = Math.max(0, 1 - (now - fadeStart) / 2000);
       if (alpha <= 0) return;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.globalAlpha = alpha;
 
       for (const p of pieces) {
+        p.vx *= p.drag;
+        p.vy *= p.drag;
+        p.vy += p.gravity;
         p.x += p.vx;
         p.y += p.vy;
         p.rot += p.vr;
-        p.vy += 0.05;
 
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate((p.rot * Math.PI) / 180);
         ctx.fillStyle = p.color;
-        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+
+        if (p.shape === "circle") {
+          ctx.beginPath();
+          ctx.arc(0, 0, p.w / 2, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (p.shape === "star") {
+          ctx.beginPath();
+          for (let i = 0; i < 5; i++) {
+            const a = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+            const r = i === 0 ? 0 : p.w / 2;
+            ctx[i === 0 ? "moveTo" : "lineTo"](Math.cos(a) * r, Math.sin(a) * r);
+          }
+          ctx.closePath();
+          ctx.fill();
+        } else {
+          ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        }
+
         ctx.restore();
       }
 
@@ -198,6 +228,7 @@ function HomePage() {
   const [userName, setUserName] = useState("");
   const [nameConfirmed, setNameConfirmed] = useState(false);
   const prevCompleted = useRef(-1);
+  const initialized = useRef(false);
   const toastTimer = useRef(null);
 
   useEffect(() => {
@@ -211,11 +242,12 @@ function HomePage() {
       try {
         const parsed = JSON.parse(saved);
         setDone(parsed);
-        prevCompleted.current = Object.values(parsed).filter(Boolean).length;
       } catch {
         /* ignore corrupt data */
       }
     }
+    // Mark initialized after next render cycle
+    requestAnimationFrame(() => { initialized.current = true; });
   }, []);
 
   useEffect(() => {
@@ -225,8 +257,7 @@ function HomePage() {
   const completed = Object.values(done).filter(Boolean).length;
 
   useEffect(() => {
-    if (prevCompleted.current === -1) {
-      // Skip initial render / localStorage restore
+    if (!initialized.current) {
       prevCompleted.current = completed;
       return;
     }
@@ -693,7 +724,7 @@ function AdminPage() {
 
   function openFullSize(photo) {
     const url = `${API_BASE}/photo/${encodeURIComponent(photo.key)}`;
-    setViewer({ key: photo.key, url, name: photo.originalName || photo.key.split("/").pop(), token });
+    setViewer({ key: photo.key, url, name: photo.key.split("/").pop(), token });
   }
 
   function closeViewer() {

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,700;1,6..96,400&family=Inter:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;600;700&display=swap');
 
 :root {
   --yellow: #F4B324;
@@ -55,7 +55,7 @@ body {
 }
 
 .landing-heading {
-  font-family: 'Bodoni Moda', Didot, 'Playfair Display', Georgia, serif;
+  font-family: 'Playfair Display', Didot, 'Playfair Display', Georgia, serif;
   font-size: clamp(32px, 8vw, 48px);
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -66,7 +66,7 @@ body {
 
 .event-title {
   text-align: center;
-  font-family: 'Bodoni Moda', Didot, 'Playfair Display', Georgia, serif;
+  font-family: 'Playfair Display', Didot, 'Playfair Display', Georgia, serif;
   font-size: 13px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -84,7 +84,7 @@ body {
 }
 
 .hero h1 {
-  font-family: 'Bodoni Moda', Didot, 'Playfair Display', Georgia, serif;
+  font-family: 'Playfair Display', Didot, 'Playfair Display', Georgia, serif;
   font-size: clamp(28px, 8vw, 54px);
   line-height: 1;
   letter-spacing: -0.02em;
@@ -95,7 +95,7 @@ body {
 }
 
 .sub {
-  font-family: 'Bodoni Moda', Didot, 'Playfair Display', Georgia, serif;
+  font-family: 'Playfair Display', Didot, 'Playfair Display', Georgia, serif;
   font-size: 18px;
   margin-bottom: 6px;
   font-style: italic;
@@ -120,7 +120,7 @@ body {
 }
 
 .steps-heading {
-  font-family: 'Bodoni Moda', Didot, serif;
+  font-family: 'Playfair Display', Didot, serif;
   font-weight: 700;
   margin-bottom: 8px;
   font-size: 16px;
@@ -187,7 +187,7 @@ body {
   font-weight: 700;
   font-size: 14px;
   color: var(--ink);
-  font-family: 'Bodoni Moda', serif;
+  font-family: 'Playfair Display', serif;
   letter-spacing: 0.03em;
 }
 
@@ -221,7 +221,7 @@ body {
 }
 
 .card-header h2 {
-  font-family: 'Bodoni Moda', Didot, 'Playfair Display', Georgia, serif;
+  font-family: 'Playfair Display', Didot, 'Playfair Display', Georgia, serif;
   font-size: 24px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -298,7 +298,7 @@ body {
 }
 
 .name-label {
-  font-family: 'Bodoni Moda', Didot, serif;
+  font-family: 'Playfair Display', Didot, serif;
   font-size: 20px;
   font-weight: 700;
   text-transform: uppercase;
@@ -346,7 +346,7 @@ button {
   border-radius: 999px;
   font-weight: 600;
   font-size: 15px;
-  font-family: 'Bodoni Moda', serif;
+  font-family: 'Playfair Display', serif;
   letter-spacing: 0.03em;
   display: inline-flex;
   align-items: center;
@@ -425,7 +425,7 @@ button:disabled {
 }
 
 .modal-header h3 {
-  font-family: 'Bodoni Moda', Didot, 'Playfair Display', Georgia, serif;
+  font-family: 'Playfair Display', Didot, 'Playfair Display', Georgia, serif;
   font-size: 22px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -515,13 +515,83 @@ button:disabled {
   transform: translateX(-50%) translateY(0);
 }
 
-/* ==================== CONFETTI ==================== */
+/* ==================== CELEBRATION ==================== */
 
-.confetti-canvas {
+.celebration-overlay {
   position: fixed;
   inset: 0;
   z-index: 90;
   pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: celebration-fade 3.5s ease both;
+}
+
+.celebration-content {
+  text-align: center;
+  animation: celebration-pop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+}
+
+.celebration-emoji {
+  font-size: 80px;
+  display: block;
+  animation: celebration-bounce 0.8s ease both;
+}
+
+.celebration-text {
+  font-family: 'Playfair Display', serif;
+  font-size: 36px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink);
+  margin-top: 8px;
+  text-shadow: 0 2px 12px rgba(0,0,0,0.08);
+}
+
+.confetti-piece {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: var(--color);
+  border-radius: 2px;
+  animation: confetti-burst var(--d) cubic-bezier(0.2, 0.8, 0.3, 1) var(--delay) both;
+}
+
+.confetti-piece:nth-child(odd) {
+  border-radius: 50%;
+  width: 8px;
+  height: 8px;
+}
+
+@keyframes celebration-fade {
+  0%, 70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes celebration-pop {
+  0% { transform: scale(0); opacity: 0; }
+  60% { transform: scale(1.2); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes celebration-bounce {
+  0% { transform: scale(0) rotate(-20deg); }
+  50% { transform: scale(1.3) rotate(10deg); }
+  70% { transform: scale(0.9) rotate(-5deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+@keyframes confetti-burst {
+  0% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--x), var(--y)) rotate(var(--r)) scale(0.5);
+    opacity: 0;
+  }
 }
 
 /* ==================== ERROR ==================== */
@@ -545,7 +615,7 @@ button:disabled {
 }
 
 .admin h1 {
-  font-family: 'Bodoni Moda', Didot, 'Playfair Display', Georgia, serif;
+  font-family: 'Playfair Display', Didot, 'Playfair Display', Georgia, serif;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 2px;
@@ -648,7 +718,7 @@ button:disabled {
 }
 
 .admin-section-header h2 {
-  font-family: 'Bodoni Moda', Didot, 'Playfair Display', Georgia, serif;
+  font-family: 'Playfair Display', Didot, 'Playfair Display', Georgia, serif;
   font-size: 22px;
   text-transform: uppercase;
   letter-spacing: 0.03em;

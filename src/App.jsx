@@ -85,97 +85,35 @@ function LandingRedirect() {
 }
 
 // ================================================================
-// CONFETTI
+// CELEBRATION — Full-screen animated overlay on challenge complete
 // ================================================================
-function Confetti({ active }) {
-  const canvasRef = useRef(null);
-
-  useEffect(() => {
-    if (!active) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-
-    const colors = ["#F4B324", "#ff6b6b", "#4ecdc4", "#45b7d1", "#ff9ff3", "#ffeaa7", "#fd79a8", "#a29bfe", "#55efc4", "#fab1a0"];
-    const shapes = ["rect", "circle", "star"];
-    const cx = canvas.width / 2;
-    const cy = canvas.height * 0.85;
-
-    const pieces = Array.from({ length: 180 }, () => {
-      const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.2;
-      const speed = 8 + Math.random() * 14;
-      return {
-        x: cx + (Math.random() - 0.5) * 40,
-        y: cy,
-        w: 5 + Math.random() * 10,
-        h: 4 + Math.random() * 8,
-        color: colors[Math.floor(Math.random() * colors.length)],
-        vx: Math.cos(angle) * speed + (Math.random() - 0.5) * 4,
-        vy: Math.sin(angle) * speed,
-        rot: Math.random() * 360,
-        vr: (Math.random() - 0.5) * 12,
-        shape: shapes[Math.floor(Math.random() * shapes.length)],
-        gravity: 0.18 + Math.random() * 0.08,
-        drag: 0.985 + Math.random() * 0.01,
-      };
-    });
-
-    let frame;
-    let alpha = 1;
-    const fadeStart = Date.now() + 2000;
-
-    function draw() {
-      const now = Date.now();
-      if (now > fadeStart) alpha = Math.max(0, 1 - (now - fadeStart) / 2000);
-      if (alpha <= 0) return;
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.globalAlpha = alpha;
-
-      for (const p of pieces) {
-        p.vx *= p.drag;
-        p.vy *= p.drag;
-        p.vy += p.gravity;
-        p.x += p.vx;
-        p.y += p.vy;
-        p.rot += p.vr;
-
-        ctx.save();
-        ctx.translate(p.x, p.y);
-        ctx.rotate((p.rot * Math.PI) / 180);
-        ctx.fillStyle = p.color;
-
-        if (p.shape === "circle") {
-          ctx.beginPath();
-          ctx.arc(0, 0, p.w / 2, 0, Math.PI * 2);
-          ctx.fill();
-        } else if (p.shape === "star") {
-          ctx.beginPath();
-          for (let i = 0; i < 5; i++) {
-            const a = (i * 4 * Math.PI) / 5 - Math.PI / 2;
-            const r = i === 0 ? 0 : p.w / 2;
-            ctx[i === 0 ? "moveTo" : "lineTo"](Math.cos(a) * r, Math.sin(a) * r);
-          }
-          ctx.closePath();
-          ctx.fill();
-        } else {
-          ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
-        }
-
-        ctx.restore();
-      }
-
-      frame = requestAnimationFrame(draw);
-    }
-
-    draw();
-    return () => cancelAnimationFrame(frame);
-  }, [active]);
-
+function Celebration({ active }) {
   if (!active) return null;
-  return <canvas ref={canvasRef} className="confetti-canvas" />;
+
+  return (
+    <div className="celebration-overlay" key={Date.now()}>
+      <div className="celebration-content">
+        <span className="celebration-emoji">🎉</span>
+        <p className="celebration-text">Geschafft!</p>
+      </div>
+      {Array.from({ length: 40 }, (_, i) => (
+        <span
+          key={i}
+          className="confetti-piece"
+          style={{
+            "--x": `${(Math.random() - 0.5) * 100}vw`,
+            "--y": `${-60 - Math.random() * 40}vh`,
+            "--r": `${Math.random() * 720 - 360}deg`,
+            "--d": `${0.8 + Math.random() * 1.2}s`,
+            "--delay": `${Math.random() * 0.3}s`,
+            "--color": ["#F4B324", "#ff6b6b", "#4ecdc4", "#45b7d1", "#ff9ff3", "#a29bfe", "#55efc4", "#fab1a0"][i % 8],
+            left: `${50 + (Math.random() - 0.5) * 20}%`,
+            bottom: "10%",
+          }}
+        />
+      ))}
+    </div>
+  );
 }
 
 // ================================================================
@@ -354,7 +292,7 @@ function HomePage() {
 
   return (
     <main className="container">
-      <Confetti active={showConfetti} />
+      <Celebration active={showConfetti} />
       <Toast message={toast} visible={!!toast} />
 
       <ResetTitle onReset={handleReset} />

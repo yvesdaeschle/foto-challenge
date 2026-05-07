@@ -110,8 +110,14 @@ async function handleListPhotos(request, env) {
   const authResponse = requireAdmin(request, env);
   if (authResponse) return authResponse;
 
-  const listed = await env.PHOTOS_BUCKET.list({ limit: 1000 });
-  const objects = listed.objects || [];
+  // Paginate through all R2 objects
+  const objects = [];
+  let cursor;
+  do {
+    const listed = await env.PHOTOS_BUCKET.list({ limit: 1000, cursor });
+    objects.push(...(listed.objects || []));
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
 
   const photos = await Promise.all(
     objects

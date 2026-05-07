@@ -7,5 +7,5 @@ binding = "PHOTOS_BUCKET"
 bucket_name = "foto-challenge-uploads"
 
 [vars]
-ALLOWED_ORIGIN = "foto-challenge.pages.dev"
+ALLOWED_ORIGIN = "https://foto-challenge.pages.dev"
 MAX_FILE_SIZE_MB = "12"

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="40" fill="#f7b52c"/>
+  <g transform="translate(96,96)">
+    <!-- Camera body -->
+    <rect x="-40" y="-25" width="80" height="55" rx="10" fill="#080808"/>
+    <!-- Lens -->
+    <circle cx="0" cy="2" r="18" fill="none" stroke="#f7b52c" stroke-width="4"/>
+    <circle cx="0" cy="2" r="10" fill="#f7b52c" opacity="0.3"/>
+    <!-- Flash -->
+    <rect x="20" y="-22" width="12" height="6" rx="2" fill="#f7b52c" opacity="0.6"/>
+    <!-- Viewfinder -->
+    <rect x="-10" y="-35" width="20" height="12" rx="4" fill="#080808"/>
+  </g>
+  <text x="96" y="160" text-anchor="middle" font-family="system-ui,sans-serif" font-size="14" font-weight="700" fill="#080808">FOTO</text>
+</svg>

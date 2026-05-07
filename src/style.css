@@ -495,7 +495,7 @@ button:disabled {
   position: fixed;
   top: calc(env(safe-area-inset-top, 16px) + 8px);
   left: 50%;
-  transform: translateX(-50%) translateY(-120%);
+  transform: translateX(-50%) translateY(-200%);
   background: var(--green);
   color: white;
   padding: 12px 22px;

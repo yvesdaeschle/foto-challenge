@@ -87,11 +87,9 @@ function LandingRedirect() {
 // ================================================================
 // CELEBRATION — Full-screen animated overlay on challenge complete
 // ================================================================
-function Celebration({ active }) {
-  if (!active) return null;
-
+function Celebration() {
   return (
-    <div className="celebration-overlay" key={Date.now()}>
+    <div className="celebration-overlay">
       <div className="celebration-content">
         <span className="celebration-emoji">🎉</span>
         <p className="celebration-text">Geschafft!</p>
@@ -162,7 +160,7 @@ function HomePage() {
   const [done, setDone] = useState({});
   const [active, setActive] = useState(null);
   const [toast, setToast] = useState(null);
-  const [showConfetti, setShowConfetti] = useState(false);
+  const [confettiKey, setConfettiKey] = useState(0);
   const [userName, setUserName] = useState("");
   const [nameConfirmed, setNameConfirmed] = useState(false);
   const confettiTimer = useRef(null);
@@ -215,12 +213,8 @@ function HomePage() {
       showToast("Foto hochgeladen!");
       // Trigger celebration
       if (confettiTimer.current) clearTimeout(confettiTimer.current);
-      setShowConfetti(false);
-      // Force re-render by toggling off then on
-      requestAnimationFrame(() => {
-        setShowConfetti(true);
-        confettiTimer.current = setTimeout(() => setShowConfetti(false), 4000);
-      });
+      setConfettiKey((k) => k + 1);
+      confettiTimer.current = setTimeout(() => setConfettiKey(0), 5500);
     },
     [showToast]
   );
@@ -288,7 +282,7 @@ function HomePage() {
 
   return (
     <main className="container">
-      <Celebration active={showConfetti} />
+      {confettiKey > 0 && <Celebration key={confettiKey} />}
       <Toast message={toast} visible={!!toast} />
 
       <ResetTitle onReset={handleReset} />

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Camera, Check, Upload, Image as ImageIcon, Download } from "lucide-react";
+import { Camera, Check, Image as ImageIcon, Download } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
@@ -16,31 +16,36 @@ const challenges = [
     id: "new-faces",
     emoji: "🆕",
     title: "New Faces",
-    desc: "Macht ein Foto mit jemandem, den ihr heute neu kennengelernt habt."
+    desc: "Macht ein Foto mit jemandem, den ihr heute neu kennengelernt habt.",
+    detail: "Ein kurzer Moment, ein neues Gesicht, schöne Gespräche."
   },
   {
     id: "detail-love",
     emoji: "✨",
     title: "Detail Love",
-    desc: "Fotografiert ein schönes Party‑Detail."
+    desc: "Fotografiert ein schönes Party‑Detail.",
+    detail: "Deko, Drinks, Essen, Licht, Blumen."
   },
   {
     id: "small-chaos",
     emoji: "🎭",
     title: "Small Chaos",
-    desc: "Gruppenfoto mit Chaos 😄"
+    desc: "Gruppenfoto: Alle machen gleichzeitig etwas anderes.",
+    detail: "Perfektion verboten – Chaos erlaubt."
   },
   {
     id: "hands-only",
     emoji: "🤝",
     title: "Hands Only",
-    desc: "Nur Hände im Bild."
+    desc: "Nur Hände im Bild.",
+    detail: "Hands‑up, Handschlag, Kaffeebecher."
   },
   {
     id: "golden-hour",
     emoji: "🌅",
     title: "Golden Hour",
-    desc: "Perfektes Licht."
+    desc: "Das Licht ist perfekt – ihr auch.",
+    detail: "Kurz vor Sonnenuntergang oder unter Lichterketten."
   }
 ];
 
@@ -79,9 +84,40 @@ function HomePage() {
   return (
     <main className="container">
 
-      <h1>Foto Challenge</h1>
-      <p>{completed} / 5 erledigt</p>
+      {/* ✅ HERO wie gewünscht */}
+      <section className="hero">
+        <h1>
+          5 Momente.<br/>
+          Ein Abend.<br/>
+          Eure Erinnerungen.
+        </h1>
 
+        <p className="sub">
+          Willkommen zur Foto‑Challenge!
+        </p>
+
+        <p className="text">
+          Sammelt spontane Augenblicke, echte Begegnungen und kleine Details –
+          ganz ohne Druck.
+        </p>
+      </section>
+
+      {/* STEPS */}
+      <section className="steps">
+        <p>📱 QR-Code scannen</p>
+        <p>✅ 5 Challenges machen</p>
+        <p>📸 Fotos aufnehmen</p>
+        <p className="hint">
+          👉 Kein „richtig“ oder „falsch“
+        </p>
+      </section>
+
+      {/* PROGRESS */}
+      <div className="progress">
+        {completed} / 5 erledigt
+      </div>
+
+      {/* CHALLENGES */}
       {challenges.map(c => {
 
         const isDone = done[c.id];
@@ -98,6 +134,7 @@ function HomePage() {
 
             <h2>{c.emoji} {c.title}</h2>
             <p>{c.desc}</p>
+            <small>{c.detail}</small>
 
             {uploads[c.id]?.length > 0 && (
               <p className="upload-info">
@@ -143,30 +180,21 @@ function HomePage() {
 }
 
 // ------------------------------------------------
-// 🟢 UPLOAD (KAMERA + GALERIE)
+// 🟢 UPLOAD – ✅ AUTO UPLOAD (BEST UX)
 // ------------------------------------------------
 function UploadModal({ challenge, onClose, onSuccess }) {
 
   const cameraRef = useRef();
   const galleryRef = useRef();
-  const [file, setFile] = useState(null);
 
   function handleFile(e) {
-    const f = e.target.files?.[0];
-    if (f) setFile(f);
-  }
-
-  function openCamera() {
-    cameraRef.current.click();
-  }
-
-  function openGallery() {
-    galleryRef.current.click();
-  }
-
-  async function upload() {
+    const file = e.target.files?.[0];
     if (!file) return;
 
+    upload(file);
+  }
+
+  async function upload(file) {
     const form = new FormData();
     form.append("photo", file);
     form.append("challengeId", challenge.id);
@@ -177,6 +205,14 @@ function UploadModal({ challenge, onClose, onSuccess }) {
     });
 
     onSuccess();
+  }
+
+  function openCamera() {
+    cameraRef.current.click();
+  }
+
+  function openGallery() {
+    galleryRef.current.click();
   }
 
   return (
@@ -204,6 +240,7 @@ function UploadModal({ challenge, onClose, onSuccess }) {
           style={{ display: "none" }}
         />
 
+        {/* ✅ KEIN Upload Button mehr */}
         <button onClick={openCamera}>
           <Camera /> Kamera öffnen
         </button>
@@ -212,14 +249,8 @@ function UploadModal({ challenge, onClose, onSuccess }) {
           <ImageIcon /> Galerie wählen
         </button>
 
-        {file && <p>✅ Bild gewählt</p>}
-
-        <button onClick={upload}>
-          <Upload /> Upload
-        </button>
-
         <button onClick={onClose} className="secondary">
-          Schließen
+          Abbrechen
         </button>
 
       </div>

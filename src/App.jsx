@@ -165,9 +165,9 @@ function HomePage() {
   const [showConfetti, setShowConfetti] = useState(false);
   const [userName, setUserName] = useState("");
   const [nameConfirmed, setNameConfirmed] = useState(false);
-  const prevCompleted = useRef(-1);
-  const initialized = useRef(false);
+  const confettiTimer = useRef(null);
   const toastTimer = useRef(null);
+  const hasLoaded = useRef(false);
 
   useEffect(() => {
     const savedName = localStorage.getItem("userName");
@@ -184,29 +184,16 @@ function HomePage() {
         /* ignore corrupt data */
       }
     }
-    // Mark initialized after next render cycle
-    requestAnimationFrame(() => { initialized.current = true; });
+    hasLoaded.current = true;
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("progress", JSON.stringify(done));
+    if (hasLoaded.current) {
+      localStorage.setItem("progress", JSON.stringify(done));
+    }
   }, [done]);
 
   const completed = Object.values(done).filter(Boolean).length;
-
-  useEffect(() => {
-    if (!initialized.current) {
-      prevCompleted.current = completed;
-      return;
-    }
-    if (completed > prevCompleted.current) {
-      setShowConfetti(true);
-      const timer = setTimeout(() => setShowConfetti(false), 4500);
-      prevCompleted.current = completed;
-      return () => clearTimeout(timer);
-    }
-    prevCompleted.current = completed;
-  }, [completed]);
 
   const showToast = useCallback((msg) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -217,6 +204,7 @@ function HomePage() {
   useEffect(() => {
     return () => {
       if (toastTimer.current) clearTimeout(toastTimer.current);
+      if (confettiTimer.current) clearTimeout(confettiTimer.current);
     };
   }, []);
 
@@ -225,6 +213,14 @@ function HomePage() {
       setDone((d) => ({ ...d, [challengeId]: true }));
       setActive(null);
       showToast("Foto hochgeladen!");
+      // Trigger celebration
+      if (confettiTimer.current) clearTimeout(confettiTimer.current);
+      setShowConfetti(false);
+      // Force re-render by toggling off then on
+      requestAnimationFrame(() => {
+        setShowConfetti(true);
+        confettiTimer.current = setTimeout(() => setShowConfetti(false), 4000);
+      });
     },
     [showToast]
   );
@@ -517,6 +513,7 @@ function UploadModal({ challenge, onClose, onSuccess, userName }) {
 function AuthImage({ src, token, alt, className, onClick }) {
   const [blobUrl, setBlobUrl] = useState(null);
   const [failed, setFailed] = useState(false);
+  const blobRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -526,7 +523,11 @@ function AuthImage({ src, token, alt, className, onClick }) {
         const res = await fetch(src, { headers: { "x-admin-token": token } });
         if (!res.ok) throw new Error("Load failed");
         const blob = await res.blob();
-        if (!cancelled) setBlobUrl(URL.createObjectURL(blob));
+        if (!cancelled) {
+          const url = URL.createObjectURL(blob);
+          blobRef.current = url;
+          setBlobUrl(url);
+        }
       } catch {
         if (!cancelled) setFailed(true);
       }
@@ -535,7 +536,7 @@ function AuthImage({ src, token, alt, className, onClick }) {
     load();
     return () => {
       cancelled = true;
-      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      if (blobRef.current) URL.revokeObjectURL(blobRef.current);
     };
   }, [src, token]);
 
@@ -807,6 +808,7 @@ function AdminPage() {
 function ImageViewer({ viewer, onClose }) {
   const [blobUrl, setBlobUrl] = useState(null);
   const [loading, setLoading] = useState(true);
+  const blobRef = useRef(null);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -818,7 +820,9 @@ function ImageViewer({ viewer, onClose }) {
         if (!res.ok) throw new Error("Load failed");
         const blob = await res.blob();
         if (!cancelled) {
-          setBlobUrl(URL.createObjectURL(blob));
+          const url = URL.createObjectURL(blob);
+          blobRef.current = url;
+          setBlobUrl(url);
           setLoading(false);
         }
       } catch {
@@ -831,7 +835,7 @@ function ImageViewer({ viewer, onClose }) {
     return () => {
       cancelled = true;
       document.body.style.overflow = "";
-      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      if (blobRef.current) URL.revokeObjectURL(blobRef.current);
     };
   }, [viewer.url, viewer.token]);
 

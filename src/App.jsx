@@ -1,55 +1,50 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Camera, Check, Upload } from "lucide-react";
+import { Camera, Check, Upload, Image as ImageIcon, Download } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
-// ------------------- ROUTING -------------------
+// ---------------- ROUTING ----------------
 function getRoute() {
   return window.location.pathname.includes("admin")
     ? "admin"
     : "home";
 }
 
-// ------------------- CHALLENGES -------------------
+// ---------------- CHALLENGES ----------------
 const challenges = [
   {
     id: "new-faces",
     emoji: "🆕",
     title: "New Faces",
-    desc: "Macht ein Foto mit jemandem, den ihr heute neu kennengelernt habt.",
-    detail: "Ein kurzer Moment, ein neues Gesicht, schöne Gespräche."
+    desc: "Macht ein Foto mit jemandem, den ihr heute neu kennengelernt habt."
   },
   {
     id: "detail-love",
     emoji: "✨",
     title: "Detail Love",
-    desc: "Fotografiert ein schönes Party‑Detail.",
-    detail: "Deko, Drinks, Essen, Licht, Blumen."
+    desc: "Fotografiert ein schönes Party‑Detail."
   },
   {
     id: "small-chaos",
     emoji: "🎭",
     title: "Small Chaos",
-    desc: "Gruppenfoto: Alle machen gleichzeitig etwas anderes.",
-    detail: "Perfektion verboten – Chaos erlaubt."
+    desc: "Gruppenfoto mit Chaos 😄"
   },
   {
     id: "hands-only",
     emoji: "🤝",
     title: "Hands Only",
-    desc: "Nur Hände im Bild.",
-    detail: "Hands‑up, Handschlag, Kaffeebecher."
+    desc: "Nur Hände im Bild."
   },
   {
     id: "golden-hour",
     emoji: "🌅",
     title: "Golden Hour",
-    desc: "Das Licht ist perfekt – ihr auch.",
-    detail: "Kurz vor Sonnenuntergang oder unter Lichterketten."
+    desc: "Perfektes Licht."
   }
 ];
 
-// ------------------- APP -------------------
+// ---------------- APP ----------------
 export default function App() {
   const route = getRoute();
   return route === "admin" ? <AdminPage /> : <HomePage />;
@@ -59,6 +54,7 @@ export default function App() {
 // 🟡 HOME
 // ------------------------------------------------
 function HomePage() {
+
   const [done, setDone] = useState({});
   const [uploads, setUploads] = useState({});
   const [active, setActive] = useState(null);
@@ -75,8 +71,7 @@ function HomePage() {
   useEffect(() => {
     fetch(`${API_BASE}/photos-by-challenge`)
       .then(r => r.json())
-      .then(d => setUploads(d.grouped || {}))
-      .catch(() => {});
+      .then(d => setUploads(d.grouped || {}));
   }, []);
 
   const completed = Object.values(done).filter(Boolean).length;
@@ -84,69 +79,53 @@ function HomePage() {
   return (
     <main className="container">
 
-      {/* HERO */}
-      <section className="hero">
-        <h1>
-          5 Momente.<br/>
-          Ein Abend.<br/>
-          Eure Erinnerungen.
-        </h1>
+      <h1>Foto Challenge</h1>
+      <p>{completed} / 5 erledigt</p>
 
-        <p className="sub">Willkommen zur Foto‑Challenge!</p>
+      {challenges.map(c => {
 
-        <p className="text">
-          Sammelt spontane Augenblicke, echte Begegnungen und kleine Details –
-          ganz ohne Druck.
-        </p>
-      </section>
+        const isDone = done[c.id];
 
-      {/* STEPS */}
-      <section className="steps">
-        <p>📱 QR-Code scannen</p>
-        <p>✅ 5 Challenges machen</p>
-        <p>📸 Fotos hochladen</p>
-        <p className="hint">
-          👉 Kein „richtig“ oder „falsch“
-        </p>
-      </section>
+        return (
+          <div
+            key={c.id}
+            className="card"
+            style={{
+              border: isDone ? "3px solid #4CAF50" : "none",
+              background: isDone ? "#f6fff7" : "white"
+            }}
+          >
 
-      {/* PROGRESS */}
-      <div className="progress">
-        {completed} / 5 erledigt
-      </div>
+            <h2>{c.emoji} {c.title}</h2>
+            <p>{c.desc}</p>
 
-      {/* CHALLENGES */}
-      {challenges.map(c => (
-        <div key={c.id} className="card">
+            {uploads[c.id]?.length > 0 && (
+              <p className="upload-info">
+                📸 {uploads[c.id].length} Bilder
+              </p>
+            )}
 
-          <h2>{c.emoji} {c.title}</h2>
-          <p>{c.desc}</p>
-          <small>{c.detail}</small>
+            <div className="actions">
 
-          {uploads[c.id]?.length > 0 && (
-            <p className="upload-info">
-              📸 {uploads[c.id].length} Bilder
-            </p>
-          )}
+              <button onClick={() => setActive(c)}>
+                <Camera size={16}/> Foto
+              </button>
 
-          <div className="actions">
-            <button onClick={() => setActive(c)}>
-              <Camera size={16}/> Foto
-            </button>
+              <button
+                className="secondary"
+                onClick={() =>
+                  setDone(d => ({ ...d, [c.id]: true }))
+                }
+              >
+                <Check size={16}/>
+                {isDone ? "Erledigt" : "Done"}
+              </button>
 
-            <button
-              className="secondary"
-              onClick={() =>
-                setDone(d => ({ ...d, [c.id]: true }))
-              }
-            >
-              <Check size={16}/>
-              {done[c.id] ? "Erledigt" : "Done"}
-            </button>
+            </div>
+
           </div>
-
-        </div>
-      ))}
+        );
+      })}
 
       {active && (
         <UploadModal
@@ -164,16 +143,25 @@ function HomePage() {
 }
 
 // ------------------------------------------------
-// 🟢 UPLOAD
+// 🟢 UPLOAD (KAMERA + GALERIE)
 // ------------------------------------------------
 function UploadModal({ challenge, onClose, onSuccess }) {
 
-  const inputRef = useRef();
+  const cameraRef = useRef();
+  const galleryRef = useRef();
   const [file, setFile] = useState(null);
 
   function handleFile(e) {
     const f = e.target.files?.[0];
     if (f) setFile(f);
+  }
+
+  function openCamera() {
+    cameraRef.current.click();
+  }
+
+  function openGallery() {
+    galleryRef.current.click();
   }
 
   async function upload() {
@@ -182,7 +170,6 @@ function UploadModal({ challenge, onClose, onSuccess }) {
     const form = new FormData();
     form.append("photo", file);
     form.append("challengeId", challenge.id);
-    form.append("challengeTitle", challenge.title);
 
     await fetch(`${API_BASE}/upload`, {
       method: "POST",
@@ -198,16 +185,37 @@ function UploadModal({ challenge, onClose, onSuccess }) {
 
         <h3>{challenge.title}</h3>
 
+        {/* Kamera */}
         <input
-          ref={inputRef}
+          ref={cameraRef}
           type="file"
           accept="image/*"
           capture="environment"
           onChange={handleFile}
+          style={{ display: "none" }}
         />
 
+        {/* Galerie */}
+        <input
+          ref={galleryRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFile}
+          style={{ display: "none" }}
+        />
+
+        <button onClick={openCamera}>
+          <Camera /> Kamera öffnen
+        </button>
+
+        <button onClick={openGallery} className="secondary">
+          <ImageIcon /> Galerie wählen
+        </button>
+
+        {file && <p>✅ Bild gewählt</p>}
+
         <button onClick={upload}>
-          <Upload size={16}/> Upload
+          <Upload /> Upload
         </button>
 
         <button onClick={onClose} className="secondary">
@@ -220,40 +228,43 @@ function UploadModal({ challenge, onClose, onSuccess }) {
 }
 
 // ------------------------------------------------
-// 🔴 ADMIN
+// 🔴 ADMIN (ZIP DOWNLOAD)
 // ------------------------------------------------
 function AdminPage() {
 
   const [token, setToken] = useState("");
-  const [photos, setPhotos] = useState([]);
-  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  async function load() {
-    setError("");
+  async function downloadZip() {
 
-    try {
-      const res = await fetch(`${API_BASE}/photos`, {
-        headers: { "x-admin-token": token }
-      });
+    setLoading(true);
 
-      const data = await res.json();
+    const res = await fetch(`${API_BASE}/zip`, {
+      headers: { "x-admin-token": token }
+    });
 
-      if (!res.ok) {
-        setError(data.error || "Fehler");
-        return;
-      }
-
-      setPhotos(data.photos || []);
-
-    } catch {
-      setError("Verbindung fehlgeschlagen");
+    if (!res.ok) {
+      alert("Falscher Token oder Fehler");
+      setLoading(false);
+      return;
     }
+
+    const blob = await res.blob();
+
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "foto-challenge.zip";
+    a.click();
+
+    setLoading(false);
   }
 
   return (
     <div className="admin">
 
-      <h1>Admin Galerie</h1>
+      <h1>Admin Download</h1>
 
       <input
         placeholder="Admin Token"
@@ -261,19 +272,9 @@ function AdminPage() {
         onChange={e => setToken(e.target.value)}
       />
 
-      <button onClick={load}>Bilder laden</button>
-
-      {error && <p className="error">{error}</p>}
-
-      <div className="gallery">
-        {photos.map(p => (
-          <img
-            key={p.key}
-            src={`${API_BASE}/photo/${encodeURIComponent(p.key)}`}
-            alt=""
-          />
-        ))}
-      </div>
+      <button onClick={downloadZip}>
+        {loading ? "Erstelle ZIP..." : "Alle Bilder als ZIP laden"}
+      </button>
 
     </div>
   );

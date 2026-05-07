@@ -1,11 +1,11 @@
-name = "foto-challenge-api"
+name = "white-unit-000b"
 main = "src/index.js"
-compatibility_date = "2026-05-01"
+compatibility_date = "2026-05-07"
 
 [[r2_buckets]]
 binding = "PHOTOS_BUCKET"
 bucket_name = "foto-challenge-uploads"
 
 [vars]
-ALLOWED_ORIGIN = "https://sevyeschl.pages.dev"
+ALLOWED_ORIGIN = "foto-challenge.pages.dev"
 MAX_FILE_SIZE_MB = "12"

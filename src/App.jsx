@@ -158,16 +158,16 @@ function LandingRedirect() {
 function Celebration() {
   const [pieces] = useState(() => {
     const colors = ["#F4B324", "#ff6b6b", "#4ecdc4", "#45b7d1", "#ff9ff3", "#a29bfe", "#55efc4", "#fab1a0", "#fd79a8", "#e17055"];
+    // Generate unique keyframe class index (0-9) for each piece for wobble variety
     return Array.from({ length: 60 }, (_, i) => ({
       id: i,
       color: colors[i % colors.length],
       left: (Math.random() * 100).toFixed(1),
       size: (6 + Math.random() * 8).toFixed(0),
-      dur: (2 + Math.random() * 2).toFixed(2),
+      dur: (2.5 + Math.random() * 2).toFixed(2),
       delay: (Math.random() * 2.5).toFixed(2),
-      drift: ((Math.random() - 0.5) * 60).toFixed(0),
-      rotEnd: (Math.random() * 720 - 360).toFixed(0),
       shape: i % 3, // 0=rect, 1=circle, 2=strip
+      wobble: i % 4, // 0-3 wobble variant
     }));
   });
 
@@ -180,7 +180,7 @@ function Celebration() {
       {pieces.map((p) => (
         <span
           key={p.id}
-          className={`confetti-piece confetti-shape-${p.shape} confetti-rain`}
+          className={`confetti-piece confetti-shape-${p.shape} confetti-fall confetti-wobble-${p.wobble}`}
           style={{
             left: `${p.left}%`,
             width: p.shape === 2 ? `${p.size * 0.4}px` : `${p.size}px`,
@@ -188,6 +188,8 @@ function Celebration() {
             background: p.color,
             animationDuration: `${p.dur}s`,
             animationDelay: `${p.delay}s`,
+            WebkitAnimationDuration: `${p.dur}s`,
+            WebkitAnimationDelay: `${p.delay}s`,
           }}
         />
       ))}

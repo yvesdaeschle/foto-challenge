@@ -824,12 +824,18 @@ function PartyUploadModal({ onClose, onSuccess, userName }) {
       setError("Bitte nur Bilder auswählen.");
       return;
     }
+
+    const MAX_FILES = 20;
+    const limited = images.slice(0, MAX_FILES);
+    const msgs = [];
     if (images.length < selected.length) {
-      setError(`${selected.length - images.length} Datei(en) übersprungen (keine Bilder).`);
-    } else {
-      setError(null);
+      msgs.push(`${selected.length - images.length} Datei(en) übersprungen (keine Bilder).`);
     }
-    setFiles(images);
+    if (images.length > MAX_FILES) {
+      msgs.push(`Maximal ${MAX_FILES} Fotos auf einmal – nur die ersten ${MAX_FILES} wurden übernommen.`);
+    }
+    setError(msgs.length > 0 ? msgs.join(" ") : null);
+    setFiles(limited);
   }
 
   async function uploadAll() {
@@ -920,7 +926,7 @@ function PartyUploadModal({ onClose, onSuccess, userName }) {
           )}
         </div>
 
-        <p className="modal-desc">Lade deine schönsten Partyfotos hoch – du kannst mehrere auf einmal auswählen.</p>
+        <p className="modal-desc">Lade deine schönsten Partyfotos hoch – du kannst bis zu 20 auf einmal auswählen.</p>
 
         {error && (
           <div className="error">

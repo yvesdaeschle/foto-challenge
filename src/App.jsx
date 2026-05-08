@@ -10,6 +10,7 @@ import {
   RefreshCw,
   ZoomIn,
   Trash2,
+  Images,
 } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
@@ -266,6 +267,7 @@ function HomePage() {
     try { return JSON.parse(localStorage.getItem("progress") || "{}"); } catch { return {}; }
   });
   const [active, setActive] = useState(null);
+  const [partyUploadOpen, setPartyUploadOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [confettiKey, setConfettiKey] = useState(0);
   const [userName, setUserName] = useState(() => localStorage.getItem("userName") || "");
@@ -484,6 +486,21 @@ function HomePage() {
           existingIdempotencyKey={
             (done[active.id] && typeof done[active.id] === "object" && done[active.id].idempotencyKey) || null
           }
+        />
+      )}
+
+      <div className="party-upload-section fade-in" style={{ animationDelay: "0.5s" }}>
+        <p className="party-upload-text">Noch mehr Schnappschüsse? Lade hier deine Partyfotos hoch!</p>
+        <button className="btn-full secondary" onClick={() => setPartyUploadOpen(true)}>
+          <Images size={18} /> Weitere Partyfotos
+        </button>
+      </div>
+
+      {partyUploadOpen && (
+        <PartyUploadModal
+          onClose={() => setPartyUploadOpen(false)}
+          onSuccess={() => showToast("Fotos hochgeladen!")}
+          userName={userName}
         />
       )}
 
@@ -755,6 +772,246 @@ function UploadModal({ challenge, onClose, onSuccess, userName, existingIdempote
 }
 
 // ================================================================
+// PARTY UPLOAD MODAL — Multi-file gallery upload for extra party photos
+// ================================================================
+function PartyUploadModal({ onClose, onSuccess, userName }) {
+  const fileRef = useRef();
+  const modalRef = useRef(null);
+  const [files, setFiles] = useState([]);
+  const [previews, setPreviews] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadIndex, setUploadIndex] = useState(0);
+  const [uploadTotal, setUploadTotal] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState(null);
+  const xhrRef = useRef(null);
+
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+
+    function handleKeyDown(e) {
+      if (e.key === "Escape" && !uploading) {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab" || !modalRef.current) return;
+      const focusable = modalRef.current.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = "";
+      document.removeEventListener("keydown", handleKeyDown);
+      previews.forEach((url) => URL.revokeObjectURL(url));
+      if (xhrRef.current) xhrRef.current.abort();
+    };
+  }, [uploading, onClose]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleFiles(e) {
+    const selected = Array.from(e.target.files || []);
+    // Filter to images only
+    const images = selected.filter((f) => f.type.startsWith("image/"));
+    if (images.length === 0) {
+      setError("Bitte nur Bilder auswählen.");
+      return;
+    }
+    if (images.length < selected.length) {
+      setError(`${selected.length - images.length} Datei(en) übersprungen (keine Bilder).`);
+    } else {
+      setError(null);
+    }
+
+    // Clean up old previews
+    previews.forEach((url) => URL.revokeObjectURL(url));
+
+    const newPreviews = images.map((f) => URL.createObjectURL(f));
+    setFiles(images);
+    setPreviews(newPreviews);
+  }
+
+  function removeFile(index) {
+    URL.revokeObjectURL(previews[index]);
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+    setPreviews((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function uploadAll() {
+    if (files.length === 0) return;
+    setError(null);
+    setUploading(true);
+    setProcessing(true);
+    setUploadTotal(files.length);
+    setUploadIndex(0);
+    setUploadProgress(0);
+
+    let successCount = 0;
+
+    for (let i = 0; i < files.length; i++) {
+      setUploadIndex(i);
+      setUploadProgress(0);
+      const file = files[i];
+
+      // Client-side size check
+      if (file.size > 25 * 1024 * 1024) {
+        continue; // skip oversized files silently
+      }
+
+      try {
+        setProcessing(true);
+        const { original, thumb } = await processImage(file);
+        setProcessing(false);
+
+        const form = new FormData();
+        form.append("photo", original, "photo.jpg");
+        form.append("thumb", thumb, "thumb.jpg");
+        form.append("name", userName || "");
+        form.append("idempotencyKey", generateIdempotencyKey());
+
+        await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhrRef.current = xhr;
+          xhr.open("POST", `${API_BASE}/upload-party`);
+          xhr.upload.onprogress = (ev) => {
+            if (ev.lengthComputable) {
+              setUploadProgress(Math.round((ev.loaded / ev.total) * 100));
+            }
+          };
+          xhr.onload = () => {
+            xhrRef.current = null;
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve();
+            } else {
+              let msg = `Upload fehlgeschlagen (${xhr.status})`;
+              try { const data = JSON.parse(xhr.responseText); if (data.error) msg = data.error; } catch { /* ignore */ }
+              reject(new Error(msg));
+            }
+          };
+          xhr.onerror = () => { xhrRef.current = null; reject(new Error("Netzwerkfehler")); };
+          xhr.onabort = () => { xhrRef.current = null; reject(new Error("Abgebrochen")); };
+          xhr.send(form);
+        });
+
+        successCount++;
+      } catch (err) {
+        setError(`Fehler bei Bild ${i + 1}: ${err.message}`);
+        setProcessing(false);
+      }
+    }
+
+    setUploading(false);
+    setProcessing(false);
+    if (successCount > 0) {
+      onSuccess();
+      onClose();
+    }
+  }
+
+  function handleClose() {
+    if (uploading) return;
+    onClose();
+  }
+
+  return (
+    <div className="modal" onClick={handleClose} role="dialog" aria-modal="true" aria-labelledby="party-modal-title">
+      <div className="modal-box slide-up" ref={modalRef} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 id="party-modal-title">📸 Partyfotos</h3>
+          {!uploading && (
+            <button className="btn-icon" onClick={handleClose} aria-label="Schließen">
+              <X size={20} />
+            </button>
+          )}
+        </div>
+
+        <p className="modal-desc">Lade deine schönsten Partyfotos hoch – du kannst mehrere auf einmal auswählen.</p>
+
+        {error && (
+          <div className="error">
+            <p>{error}</p>
+          </div>
+        )}
+
+        {uploading ? (
+          <div className="uploading">
+            {processing ? (
+              <>
+                <Loader size={24} className="spin" />
+                <span>Bild {uploadIndex + 1} von {uploadTotal} wird vorbereitet…</span>
+              </>
+            ) : (
+              <div className="upload-progress">
+                <div className="upload-progress-bar-wrap">
+                  <div className="upload-progress-bar" style={{ width: `${uploadProgress}%` }} />
+                </div>
+                <span className="upload-progress-label">
+                  Bild {uploadIndex + 1} von {uploadTotal} – {uploadProgress < 100 ? `${uploadProgress}%` : "Wird gespeichert…"}
+                </span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleFiles}
+              style={{ display: "none" }}
+            />
+
+            {previews.length > 0 ? (
+              <>
+                <div className="party-preview-grid">
+                  {previews.map((url, i) => (
+                    <div key={i} className="party-preview-item">
+                      <img src={url} alt={`Vorschau ${i + 1}`} className="party-preview-img" />
+                      <button
+                        className="party-preview-remove"
+                        onClick={() => removeFile(i)}
+                        aria-label={`Bild ${i + 1} entfernen`}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <p className="party-count">{files.length} Foto{files.length !== 1 ? "s" : ""} ausgewählt</p>
+                <button className="btn-full btn-primary" onClick={uploadAll}>
+                  <Check size={18} /> {files.length} Foto{files.length !== 1 ? "s" : ""} hochladen
+                </button>
+                <button className="btn-full secondary" onClick={() => fileRef.current.click()}>
+                  Andere Fotos wählen
+                </button>
+              </>
+            ) : (
+              <button className="btn-full btn-primary" onClick={() => fileRef.current.click()}>
+                <ImageIcon size={18} /> Fotos aus Galerie wählen
+              </button>
+            )}
+
+            <button className="btn-full btn-cancel" onClick={handleClose}>
+              Abbrechen
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ================================================================
 // AUTH IMAGE — loads image via fetch with auth header
 // ================================================================
 function AuthImage({ src, token, alt, className, onClick }) {
@@ -909,11 +1166,17 @@ function AdminPage() {
 
   // Group photos by challenge
   const grouped = {};
+  const partyPhotos = [];
   for (const c of challenges) grouped[c.id] = [];
   for (const photo of photos) {
     const cid = photo.challengeId || photo.key.split("/")[0];
-    if (grouped[cid]) grouped[cid].push(photo);
-    else grouped[cid] = [photo];
+    if (cid === "party") {
+      partyPhotos.push(photo);
+    } else if (grouped[cid]) {
+      grouped[cid].push(photo);
+    } else {
+      grouped[cid] = [photo];
+    }
   }
 
   const totalSize = photos.reduce((sum, p) => sum + (p.size || 0), 0);
@@ -1031,6 +1294,51 @@ function AdminPage() {
           </section>
         );
       })}
+
+      {/* Party Photos */}
+      {partyPhotos.length > 0 && (
+        <section className="admin-section">
+          <div className="admin-section-header">
+            <h2>
+              📸 Partyfotos <span className="admin-count">({partyPhotos.length})</span>
+            </h2>
+            <button
+              className="btn-category-zip"
+              onClick={() => downloadZip("party")}
+              title="Partyfotos als ZIP laden"
+            >
+              <Download size={14} />
+            </button>
+          </div>
+          <div className="gallery-grid">
+            {partyPhotos.map((photo) => (
+              <div key={photo.key} className="gallery-item">
+                <button className="gallery-thumb" onClick={() => openFullSize(photo)}>
+                  <AuthImage
+                    src={`${API_BASE}/photo/${photo.hasThumb !== false ? "thumb" : "full"}/${encodeURIComponent(photo.key)}`}
+                    token={token}
+                    alt={photo.originalName || "Foto"}
+                    className="thumb-img"
+                  />
+                  <span className="gallery-zoom">
+                    <ZoomIn size={14} />
+                  </span>
+                  <span className="thumb-name">{photo.name || photo.key.split("/").pop()}</span>
+                </button>
+                <button
+                  className="btn-icon gallery-delete"
+                  onClick={() => setConfirmState({ kind: "one", photo })}
+                  disabled={deleting === photo.key}
+                  aria-label="Löschen"
+                  title="Foto löschen"
+                >
+                  {deleting === photo.key ? <Loader size={14} className="spin" /> : <Trash2 size={14} />}
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {photos.length === 0 && (
         <p className="text" style={{ textAlign: "center", marginTop: 40 }}>

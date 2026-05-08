@@ -10,6 +10,8 @@ const allowedChallenges = new Set([
   "05-golden-hour"
 ]);
 
+const PARTY_PREFIX = "party";
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -24,6 +26,10 @@ export default {
     try {
       if (request.method === "POST" && url.pathname === "/upload") {
         return withCors(await handleUpload(request, env), request, env);
+      }
+
+      if (request.method === "POST" && url.pathname === "/upload-party") {
+        return withCors(await handlePartyUpload(request, env), request, env);
       }
 
       if (request.method === "GET" && url.pathname === "/photos") {
@@ -128,6 +134,71 @@ async function handleUpload(request, env) {
     challengeTitle,
     name,
     message,
+    originalName: sanitizeText(photo.name || "foto", 140),
+    uploadedAt: now.toISOString()
+  };
+
+  const puts = [
+    env.PHOTOS_BUCKET.put(`original/${key}`, photo.stream(), {
+      httpMetadata: { contentType: "image/jpeg", cacheControl: "private, max-age=0, no-store" },
+      customMetadata: metadata
+    })
+  ];
+
+  if (thumb && typeof thumb !== "string") {
+    puts.push(
+      env.PHOTOS_BUCKET.put(`thumbs/${key}`, thumb.stream(), {
+        httpMetadata: { contentType: "image/jpeg", cacheControl: "public, max-age=31536000, immutable" },
+        customMetadata: metadata
+      })
+    );
+  }
+
+  await Promise.all(puts);
+
+  return Response.json({ ok: true, key }, { headers: jsonHeaders });
+}
+
+async function handlePartyUpload(request, env) {
+  const contentType = request.headers.get("content-type") || "";
+
+  if (!contentType.includes("multipart/form-data")) {
+    return Response.json({ error: "Expected multipart/form-data" }, { status: 400, headers: jsonHeaders });
+  }
+
+  const formData = await request.formData();
+  const photo = formData.get("photo");
+  const thumb = formData.get("thumb");
+  const name = sanitizeText(formData.get("name"), 80);
+  const idempotencyKey = sanitizeKeyToken(formData.get("idempotencyKey"));
+
+  if (!photo || typeof photo === "string") {
+    return Response.json({ error: "Kein Foto gefunden." }, { status: 400, headers: jsonHeaders });
+  }
+
+  if (!photo.type || !photo.type.startsWith("image/")) {
+    return Response.json({ error: "Bitte nur Bilder hochladen." }, { status: 400, headers: jsonHeaders });
+  }
+
+  const maxMb = Number(env.MAX_FILE_SIZE_MB || "12");
+  const maxBytes = maxMb * 1024 * 1024;
+
+  if (photo.size > maxBytes) {
+    return Response.json({ error: `Bild ist zu groß. Maximal ${maxMb} MB.` }, { status: 413, headers: jsonHeaders });
+  }
+
+  const extension = "jpg";
+  const safeName = idempotencyKey || randomId();
+  const nameSlug = name ? name.replace(/[^a-zA-Z0-9äöüÄÖÜß-]/g, "_").slice(0, 30) : "anon";
+  const key = idempotencyKey
+    ? `${PARTY_PREFIX}/${nameSlug}-${safeName}.${extension}`
+    : `${PARTY_PREFIX}/${nameSlug}-${Date.now()}-${safeName}.${extension}`;
+
+  const now = new Date();
+  const metadata = {
+    challengeId: PARTY_PREFIX,
+    challengeTitle: "Partyfotos",
+    name,
     originalName: sanitizeText(photo.name || "foto", 140),
     uploadedAt: now.toISOString()
   };

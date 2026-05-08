@@ -72,26 +72,64 @@ thumbs/01-new-faces/MaxMustermann-1752345678-abc123.jpg
 ### Im Browser (Admin)
 Unter `/admin` gibt es pro Challenge einen ZIP-Download-Button. Der Worker streamt die Fotos serverseitig als ZIP — kein Browser-Memory-Problem.
 
-### Via rclone (für den kompletten Bucket)
+### Via Skript (für den kompletten Bucket)
 
 ```bash
-# 1. rclone installieren: https://rclone.org/install/
+chmod +x download-all.sh
+./download-all.sh
+```
 
-# 2. R2 als Remote konfigurieren
-rclone config
-# → Name: r2
-# → Type: s3
-# → Provider: Cloudflare
-# → Access Key / Secret: aus Cloudflare Dashboard → R2 → API Tokens
-# → Endpoint: https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+#### Einmalige Einrichtung (rclone)
 
-# 3. Alle Fotos synchronisieren (resumable, parallel)
+1. Installieren: `brew install rclone`
+2. Konfigurieren: `rclone config`
+   - **n** → neues Remote
+   - Name: **r2**
+   - Type: **s3**
+   - Provider: **Cloudflare**
+   - Access Key ID & Secret: Cloudflare Dashboard → R2 → Manage R2 API Tokens → Token erstellen (Object Read)
+   - Endpoint: `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` (Account-ID steht in der Dashboard-URL)
+   - Rest: Defaults übernehmen
+
+#### Manuell (ohne Skript)
+
+```bash
+# Alle Fotos synchronisieren (resumable, parallel)
 rclone sync r2:foto-challenge-uploads/original/ ./alle-fotos/ --progress
 
-# 4. Nur eine Challenge herunterladen
+# Nur eine Challenge herunterladen
 rclone sync r2:foto-challenge-uploads/original/01-new-faces/ ./neue-gesichter/ --progress
 ```
 
 ### Kosten
 
 R2 hat **keine Egress-Gebühren**. Download beliebig oft = $0.
+
+## Deployment
+
+### Frontend (Cloudflare Pages)
+
+1. Repository mit Cloudflare Pages verbinden (Dashboard → Pages → Create)
+2. Build-Settings:
+   - Build command: `npm run build`
+   - Build output: `dist`
+   - Environment variable: `VITE_API_BASE_URL=https://your-worker.workers.dev`
+
+### Worker (Cloudflare Workers)
+
+```bash
+cd worker
+npm install
+wrangler secret put ADMIN_TOKEN    # Admin-Passwort setzen
+wrangler deploy                    # Worker deployen
+```
+
+Der Worker braucht einen R2-Bucket `foto-challenge-uploads` (in `wrangler.toml` konfiguriert) und den Workers Paid Plan ($5/Monat).
+
+## Aufräumen nach der Party
+
+1. **Fotos sichern:** `./download-all.sh` (siehe oben)
+2. **Worker stoppen:** Cloudflare Dashboard → Workers → `white-unit-000b` → löschen
+3. **R2 Bucket löschen:** Dashboard → R2 → `foto-challenge-uploads` → Delete
+4. **Pages deaktivieren:** Dashboard → Pages → Projekt löschen
+5. **Workers Paid Plan kündigen:** Dashboard → Workers & Pages → Plans → Downgrade auf Free

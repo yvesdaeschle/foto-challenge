@@ -9,9 +9,53 @@ import {
   X,
   RefreshCw,
   ZoomIn,
+  Trash2,
 } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+
+// ================================================================
+// CLIENT-SIDE IMAGE RESIZING
+// ================================================================
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Image load failed")); };
+    img.src = url;
+  });
+}
+
+function resizeToBlob(img, maxSize, quality) {
+  return new Promise((resolve, reject) => {
+    const { width, height } = img;
+    const scale = Math.min(1, maxSize / Math.max(width, height));
+    const w = Math.round(width * scale);
+    const h = Math.round(height * scale);
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, w, h);
+    canvas.toBlob((blob) => {
+      if (!blob) return reject(new Error("Bildverarbeitung fehlgeschlagen"));
+      resolve(blob);
+    }, "image/jpeg", quality);
+  });
+}
+
+async function processImage(file) {
+  // createImageBitmap respects EXIF orientation (prevents rotated photos from iOS/Android)
+  const img = typeof createImageBitmap === "function"
+    ? await createImageBitmap(file)
+    : await loadImage(file);
+  const [original, thumb] = await Promise.all([
+    resizeToBlob(img, 3200, 0.92),
+    resizeToBlob(img, 250, 0.65),
+  ]);
+  return { original, thumb };
+}
 
 // ================================================================
 // ROUTING
@@ -94,6 +138,8 @@ function Celebration() {
     const container = containerRef.current;
     if (!container) return;
     const colors = ["#F4B324", "#ff6b6b", "#4ecdc4", "#45b7d1", "#ff9ff3", "#a29bfe", "#55efc4", "#fab1a0"];
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
 
     for (let i = 0; i < 40; i++) {
       const piece = document.createElement("span");
@@ -103,11 +149,16 @@ function Celebration() {
       piece.style.background = colors[i % 8];
       container.appendChild(piece);
 
+      // Use px instead of vw/vh — iOS Safari doesn't support viewport units in Web Animations API
+      const tx = Math.round((Math.random() - 0.5) * vw);
+      const ty = Math.round((-60 - Math.random() * 40) * vh / 100);
+      const rot = Math.round(Math.random() * 720 - 360);
+
       piece.animate(
         [
-          { transform: "translate(0,0) rotate(0deg) scale(1)", opacity: 1 },
+          { transform: "translate(0px,0px) rotate(0deg) scale(1)", opacity: 1 },
           {
-            transform: `translate(${(Math.random() - 0.5) * 100}vw, ${-60 - Math.random() * 40}vh) rotate(${Math.random() * 720 - 360}deg) scale(0.5)`,
+            transform: `translate(${tx}px, ${ty}px) rotate(${rot}deg) scale(0.5)`,
             opacity: 0,
           },
         ],
@@ -422,8 +473,11 @@ function UploadModal({ challenge, onClose, onSuccess, userName }) {
     setError(null);
 
     try {
+      const { original, thumb } = await processImage(selectedFile);
+
       const form = new FormData();
-      form.append("photo", selectedFile);
+      form.append("photo", original, "photo.jpg");
+      form.append("thumb", thumb, "thumb.jpg");
       form.append("challengeId", challenge.id);
       form.append("name", userName || "");
 
@@ -576,6 +630,7 @@ function AdminPage() {
   const [zipping, setZipping] = useState(false);
   const [viewer, setViewer] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [deleting, setDeleting] = useState(null);
 
   async function login() {
     if (!token.trim()) {
@@ -640,7 +695,7 @@ function AdminPage() {
         const results = await Promise.all(
           batch.map(async (photo) => {
             try {
-              const res = await fetch(`${API_BASE}/photo/${encodeURIComponent(photo.key)}`, { headers });
+              const res = await fetch(`${API_BASE}/photo/full/${encodeURIComponent(photo.key)}`, { headers });
               if (!res.ok) return null;
               return { key: photo.key, blob: await res.blob() };
             } catch {
@@ -678,8 +733,26 @@ function AdminPage() {
   }
 
   function openFullSize(photo) {
-    const url = `${API_BASE}/photo/${encodeURIComponent(photo.key)}`;
+    const url = `${API_BASE}/photo/full/${encodeURIComponent(photo.key)}`;
     setViewer({ key: photo.key, url, name: photo.key.split("/").pop(), token });
+  }
+
+  async function deletePhoto(photo) {
+    if (deleting) return;
+    if (!window.confirm(`"${photo.name || photo.key.split("/").pop()}" wirklich löschen?`)) return;
+    setDeleting(photo.key);
+    try {
+      const res = await fetch(`${API_BASE}/photo/${encodeURIComponent(photo.key)}`, {
+        method: "DELETE",
+        headers: { "x-admin-token": token },
+      });
+      if (!res.ok) throw new Error("Delete failed");
+      setPhotos((prev) => prev.filter((p) => p.key !== photo.key));
+    } catch {
+      setError("Löschen fehlgeschlagen.");
+    } finally {
+      setDeleting(null);
+    }
   }
 
   function closeViewer() {
@@ -788,18 +861,29 @@ function AdminPage() {
             </div>
             <div className="gallery-grid">
               {cPhotos.map((photo) => (
-                <button key={photo.key} className="gallery-thumb" onClick={() => openFullSize(photo)}>
-                  <AuthImage
-                    src={`${API_BASE}/photo/${encodeURIComponent(photo.key)}`}
-                    token={token}
-                    alt={photo.originalName || "Foto"}
-                    className="thumb-img"
-                  />
-                  <span className="gallery-zoom">
-                    <ZoomIn size={14} />
-                  </span>
-                  <span className="thumb-name">{photo.name || photo.key.split("/").pop()}</span>
-                </button>
+                <div key={photo.key} className="gallery-item">
+                  <button className="gallery-thumb" onClick={() => openFullSize(photo)}>
+                    <AuthImage
+                      src={`${API_BASE}/photo/${photo.hasThumb !== false ? "thumb" : "full"}/${encodeURIComponent(photo.key)}`}
+                      token={token}
+                      alt={photo.originalName || "Foto"}
+                      className="thumb-img"
+                    />
+                    <span className="gallery-zoom">
+                      <ZoomIn size={14} />
+                    </span>
+                    <span className="thumb-name">{photo.name || photo.key.split("/").pop()}</span>
+                  </button>
+                  <button
+                    className="btn-icon gallery-delete"
+                    onClick={() => deletePhoto(photo)}
+                    disabled={deleting === photo.key}
+                    aria-label="Löschen"
+                    title="Foto löschen"
+                  >
+                    {deleting === photo.key ? <Loader size={14} className="spin" /> : <Trash2 size={14} />}
+                  </button>
+                </div>
               ))}
             </div>
           </section>

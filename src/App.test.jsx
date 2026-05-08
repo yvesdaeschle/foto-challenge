@@ -20,6 +20,7 @@ vi.mock("lucide-react", () => {
     X: icon("X"),
     RefreshCw: icon("RefreshCw"),
     ZoomIn: icon("ZoomIn"),
+    Trash2: icon("Trash2"),
   };
 });
 
@@ -34,7 +35,7 @@ beforeEach(() => {
   localStorage.clear();
   document.body.style.overflow = "";
 
-  // Mock canvas for confetti
+  // Mock canvas for confetti and image resizing
   HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
     clearRect: vi.fn(),
     fillRect: vi.fn(),
@@ -44,7 +45,29 @@ beforeEach(() => {
     rotate: vi.fn(),
     globalAlpha: 1,
     fillStyle: "",
+    drawImage: vi.fn(),
   }));
+  HTMLCanvasElement.prototype.toBlob = vi.fn(function (cb) {
+    cb(new Blob(["fake"], { type: "image/jpeg" }));
+  });
+
+  // Mock Image constructor for processImage
+  global.Image = class {
+    constructor() {
+      setTimeout(() => this.onload && this.onload(), 0);
+    }
+    set src(_) {}
+    get width() { return 800; }
+    get height() { return 600; }
+  };
+
+  // Mock createImageBitmap for EXIF-aware resizing
+  global.createImageBitmap = vi.fn(() =>
+    Promise.resolve({ width: 800, height: 600, close: vi.fn() })
+  );
+
+  // Mock window.confirm for delete confirmation
+  global.confirm = vi.fn(() => true);
 });
 
 // ==================== ROUTING ====================

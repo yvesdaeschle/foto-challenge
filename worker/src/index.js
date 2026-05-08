@@ -30,9 +30,28 @@ export default {
         return withCors(await handleListPhotos(request, env), request, env);
       }
 
-      if (request.method === "GET" && url.pathname.startsWith("/photo/")) {
-        const key = decodeURIComponent(url.pathname.replace("/photo/", ""));
+      // GET /photo/thumb/[KEY] — 250px thumbnail
+      if (request.method === "GET" && url.pathname.startsWith("/photo/thumb/")) {
+        const key = decodeURIComponent(url.pathname.slice("/photo/thumb/".length));
+        return withCors(await handleGetThumb(request, env, key), request, env);
+      }
+
+      // GET /photo/full/[KEY] — original high-quality image
+      if (request.method === "GET" && url.pathname.startsWith("/photo/full/")) {
+        const key = decodeURIComponent(url.pathname.slice("/photo/full/".length));
         return withCors(await handleGetPhoto(request, env, key), request, env);
+      }
+
+      // Legacy: GET /photo/[KEY] — fallback to original
+      if (request.method === "GET" && url.pathname.startsWith("/photo/")) {
+        const key = decodeURIComponent(url.pathname.slice("/photo/".length));
+        return withCors(await handleGetPhoto(request, env, key), request, env);
+      }
+
+      // DELETE /photo/[KEY] — delete both original + thumb
+      if (request.method === "DELETE" && url.pathname.startsWith("/photo/")) {
+        const key = decodeURIComponent(url.pathname.slice("/photo/".length));
+        return withCors(await handleDeletePhoto(request, env, key), request, env);
       }
 
       return withCors(
@@ -59,6 +78,7 @@ async function handleUpload(request, env) {
 
   const formData = await request.formData();
   const photo = formData.get("photo");
+  const thumb = formData.get("thumb");
   const challengeId = sanitizeText(formData.get("challengeId"), 80);
   const challengeTitle = sanitizeText(formData.get("challengeTitle"), 120);
   const name = sanitizeText(formData.get("name"), 80);
@@ -83,26 +103,38 @@ async function handleUpload(request, env) {
     return Response.json({ error: `Bild ist zu groß. Maximal ${maxMb} MB.` }, { status: 413, headers: jsonHeaders });
   }
 
-  const extension = extensionFromMime(photo.type);
-  const now = new Date();
+  const extension = "jpg";
   const safeName = randomId();
   const nameSlug = name ? name.replace(/[^a-zA-Z0-9äöüÄÖÜß-]/g, "_").slice(0, 30) : "anon";
   const key = `${challengeId}/${nameSlug}-${Date.now()}-${safeName}.${extension}`;
 
-  await env.PHOTOS_BUCKET.put(key, photo.stream(), {
-    httpMetadata: {
-      contentType: photo.type,
-      cacheControl: "private, max-age=0, no-store"
-    },
-    customMetadata: {
-      challengeId,
-      challengeTitle,
-      name,
-      message,
-      originalName: sanitizeText(photo.name || "foto", 140),
-      uploadedAt: now.toISOString()
-    }
-  });
+  const now = new Date();
+  const metadata = {
+    challengeId,
+    challengeTitle,
+    name,
+    message,
+    originalName: sanitizeText(photo.name || "foto", 140),
+    uploadedAt: now.toISOString()
+  };
+
+  const puts = [
+    env.PHOTOS_BUCKET.put(`original/${key}`, photo.stream(), {
+      httpMetadata: { contentType: "image/jpeg", cacheControl: "private, max-age=0, no-store" },
+      customMetadata: metadata
+    })
+  ];
+
+  if (thumb && typeof thumb !== "string") {
+    puts.push(
+      env.PHOTOS_BUCKET.put(`thumbs/${key}`, thumb.stream(), {
+        httpMetadata: { contentType: "image/jpeg", cacheControl: "public, max-age=31536000, immutable" },
+        customMetadata: metadata
+      })
+    );
+  }
+
+  await Promise.all(puts);
 
   return Response.json({ ok: true, key }, { headers: jsonHeaders });
 }
@@ -111,39 +143,74 @@ async function handleListPhotos(request, env) {
   const authResponse = requireAdmin(request, env);
   if (authResponse) return authResponse;
 
-  // Paginate through all R2 objects
-  const objects = [];
-  let cursor;
-  do {
-    const listed = await env.PHOTOS_BUCKET.list({ limit: 1000, cursor });
-    objects.push(...(listed.objects || []));
-    cursor = listed.truncated ? listed.cursor : undefined;
-  } while (cursor);
+  // List originals and thumbs in parallel
+  async function listPrefix(prefix) {
+    const objects = [];
+    let cursor;
+    do {
+      const listed = await env.PHOTOS_BUCKET.list({
+        prefix,
+        limit: 1000,
+        cursor,
+        include: ["customMetadata"]
+      });
+      objects.push(...(listed.objects || []));
+      cursor = listed.truncated ? listed.cursor : undefined;
+    } while (cursor);
+    return objects;
+  }
 
-  const photos = await Promise.all(
-    objects
-      .filter((object) => !object.key.endsWith("/"))
-      .map(async (object) => {
-        const head = await env.PHOTOS_BUCKET.head(object.key);
-        const metadata = head?.customMetadata || {};
+  const [originals, thumbs] = await Promise.all([
+    listPrefix("original/"),
+    listPrefix("thumbs/")
+  ]);
 
-        return {
-          key: object.key,
-          size: object.size,
-          uploaded: object.uploaded,
-          challengeId: metadata.challengeId || "",
-          challengeTitle: metadata.challengeTitle || "",
-          name: metadata.name || "",
-          message: metadata.message || "",
-          originalName: metadata.originalName || "foto.jpg",
-          uploadedAt: metadata.uploadedAt || object.uploaded || ""
-        };
-      })
-  );
+  const thumbKeys = new Set(thumbs.map((o) => o.key.replace(/^thumbs\//, "")));
+
+  const photos = originals
+    .filter((object) => !object.key.endsWith("/"))
+    .map((object) => {
+      const metadata = object.customMetadata || {};
+      const key = object.key.replace(/^original\//, "");
+      return {
+        key,
+        size: object.size,
+        uploaded: object.uploaded,
+        challengeId: metadata.challengeId || "",
+        challengeTitle: metadata.challengeTitle || "",
+        name: metadata.name || "",
+        message: metadata.message || "",
+        originalName: metadata.originalName || "foto.jpg",
+        uploadedAt: metadata.uploadedAt || object.uploaded || "",
+        hasThumb: thumbKeys.has(key)
+      };
+    });
 
   photos.sort((a, b) => String(b.uploadedAt).localeCompare(String(a.uploadedAt)));
 
   return Response.json({ photos }, { headers: jsonHeaders });
+}
+
+async function handleGetThumb(request, env, key) {
+  const authResponse = requireAdmin(request, env);
+  if (authResponse) return authResponse;
+
+  if (!key || key.includes("..")) {
+    return Response.json({ error: "Invalid key" }, { status: 400, headers: jsonHeaders });
+  }
+
+  const object = await env.PHOTOS_BUCKET.get(`thumbs/${key}`);
+
+  if (!object) {
+    return Response.json({ error: "Thumbnail not found" }, { status: 404, headers: jsonHeaders });
+  }
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("etag", object.httpEtag);
+  headers.set("cache-control", "public, max-age=31536000, immutable");
+
+  return new Response(object.body, { headers });
 }
 
 async function handleGetPhoto(request, env, key) {
@@ -154,7 +221,11 @@ async function handleGetPhoto(request, env, key) {
     return Response.json({ error: "Invalid key" }, { status: 400, headers: jsonHeaders });
   }
 
-  const object = await env.PHOTOS_BUCKET.get(key);
+  // Try original/ prefix first, then raw key for legacy support
+  let object = await env.PHOTOS_BUCKET.get(`original/${key}`);
+  if (!object) {
+    object = await env.PHOTOS_BUCKET.get(key);
+  }
 
   if (!object) {
     return Response.json({ error: "Photo not found" }, { status: 404, headers: jsonHeaders });
@@ -167,6 +238,22 @@ async function handleGetPhoto(request, env, key) {
   headers.set("content-disposition", `attachment; filename="${downloadFileName(object, key)}"`);
 
   return new Response(object.body, { headers });
+}
+
+async function handleDeletePhoto(request, env, key) {
+  const authResponse = requireAdmin(request, env);
+  if (authResponse) return authResponse;
+
+  if (!key || key.includes("..")) {
+    return Response.json({ error: "Invalid key" }, { status: 400, headers: jsonHeaders });
+  }
+
+  await Promise.all([
+    env.PHOTOS_BUCKET.delete(`original/${key}`),
+    env.PHOTOS_BUCKET.delete(`thumbs/${key}`)
+  ]);
+
+  return Response.json({ ok: true }, { headers: jsonHeaders });
 }
 
 function requireAdmin(request, env) {
@@ -186,7 +273,7 @@ function corsHeaders(request, env) {
 
   return {
     "access-control-allow-origin": origin,
-    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
     "access-control-allow-headers": "content-type, x-admin-token",
     "access-control-max-age": "86400",
     "vary": "Origin"
@@ -211,20 +298,6 @@ function sanitizeText(value, maxLength) {
     .replace(/[<>]/g, "")
     .trim()
     .slice(0, maxLength);
-}
-
-function extensionFromMime(mime) {
-  const map = {
-    "image/jpeg": "jpg",
-    "image/jpg": "jpg",
-    "image/png": "png",
-    "image/webp": "webp",
-    "image/gif": "gif",
-    "image/heic": "heic",
-    "image/heif": "heif"
-  };
-
-  return map[mime] || "jpg";
 }
 
 function randomId() {

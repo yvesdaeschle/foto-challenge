@@ -42,6 +42,11 @@ export default {
         return withCors(await handleGetPhoto(request, env, key), request, env);
       }
 
+      // GET /download/zip — stream ZIP of photos
+      if (request.method === "GET" && url.pathname === "/download/zip") {
+        return withCors(await handleDownloadZip(request, env, url), request, env);
+      }
+
       // Legacy: GET /photo/[KEY] — fallback to original
       if (request.method === "GET" && url.pathname.startsWith("/photo/")) {
         const key = decodeURIComponent(url.pathname.slice("/photo/".length));
@@ -254,6 +259,190 @@ async function handleDeletePhoto(request, env, key) {
   ]);
 
   return Response.json({ ok: true }, { headers: jsonHeaders });
+}
+
+// ================================================================
+// STREAMING ZIP DOWNLOAD
+// ================================================================
+
+async function handleDownloadZip(request, env, url) {
+  // Accept token from query param (for direct browser download via <a href>)
+  const headerToken = request.headers.get("x-admin-token") || "";
+  const queryToken = url.searchParams.get("token") || "";
+  const token = headerToken || queryToken;
+
+  if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) {
+    return Response.json({ error: "Unauthorized" }, { status: 401, headers: jsonHeaders });
+  }
+
+  const challenge = url.searchParams.get("challenge") || "all";
+
+  // List all originals
+  const objects = [];
+  let cursor;
+  do {
+    const listed = await env.PHOTOS_BUCKET.list({
+      prefix: "original/",
+      limit: 1000,
+      cursor
+    });
+    objects.push(...(listed.objects || []));
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
+
+  let files = objects.filter((o) => !o.key.endsWith("/"));
+
+  if (challenge !== "all") {
+    files = files.filter((o) => {
+      const key = o.key.replace(/^original\//, "");
+      return key.startsWith(challenge + "/");
+    });
+  }
+
+  if (files.length === 0) {
+    return Response.json({ error: "Keine Fotos gefunden." }, { status: 404, headers: jsonHeaders });
+  }
+
+  const filename = challenge === "all" ? "foto-challenge.zip" : `foto-challenge-${challenge}.zip`;
+
+  const { readable, writable } = new TransformStream();
+
+  // Start streaming ZIP in the background
+  streamZip(env, files, writable);
+
+  const headers = new Headers();
+  headers.set("content-type", "application/zip");
+  headers.set("content-disposition", `attachment; filename="${filename}"`);
+  headers.set("cache-control", "private, no-store");
+
+  return new Response(readable, { headers });
+}
+
+async function streamZip(env, files, writable) {
+  const writer = writable.getWriter();
+  const encoder = new TextEncoder();
+  const centralEntries = [];
+  let offset = 0;
+
+  try {
+    for (const fileObj of files) {
+      const key = fileObj.key.replace(/^original\//, "");
+      const nameBytes = encoder.encode(key);
+
+      // Get the file from R2
+      const object = await env.PHOTOS_BUCKET.get(fileObj.key);
+      if (!object) continue;
+
+      const fileSize = object.size;
+
+      // Local file header (no CRC upfront — we use data descriptor)
+      const localHeader = new Uint8Array(30 + nameBytes.length);
+      const view = new DataView(localHeader.buffer);
+      view.setUint32(0, 0x04034b50, true);   // signature
+      view.setUint16(4, 20, true);            // version needed (2.0)
+      view.setUint16(6, 0x0008, true);        // flags: bit 3 = data descriptor
+      view.setUint16(8, 0, true);             // compression: STORE
+      view.setUint16(10, 0, true);            // mod time
+      view.setUint16(12, 0, true);            // mod date
+      view.setUint32(14, 0, true);            // CRC32 (in data descriptor)
+      view.setUint32(18, 0, true);            // compressed size (in data descriptor)
+      view.setUint32(22, 0, true);            // uncompressed size (in data descriptor)
+      view.setUint16(26, nameBytes.length, true);
+      view.setUint16(28, 0, true);            // extra field length
+      localHeader.set(nameBytes, 30);
+
+      await writer.write(localHeader);
+      const localHeaderOffset = offset;
+      offset += localHeader.length;
+
+      // Stream file data and compute CRC32
+      let crc = 0xFFFFFFFF;
+      const reader = object.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        crc = crc32update(crc, value);
+        await writer.write(value);
+        offset += value.length;
+      }
+      crc = (crc ^ 0xFFFFFFFF) >>> 0;
+
+      // Data descriptor (with signature)
+      const descriptor = new Uint8Array(16);
+      const descView = new DataView(descriptor.buffer);
+      descView.setUint32(0, 0x08074b50, true);  // descriptor signature
+      descView.setUint32(4, crc, true);
+      descView.setUint32(8, fileSize, true);     // compressed size (STORE)
+      descView.setUint32(12, fileSize, true);    // uncompressed size
+      await writer.write(descriptor);
+      offset += 16;
+
+      // Remember for central directory
+      centralEntries.push({ nameBytes, crc, size: fileSize, offset: localHeaderOffset });
+    }
+
+    // Central directory
+    const centralStart = offset;
+    for (const entry of centralEntries) {
+      const cdHeader = new Uint8Array(46 + entry.nameBytes.length);
+      const cdView = new DataView(cdHeader.buffer);
+      cdView.setUint32(0, 0x02014b50, true);   // signature
+      cdView.setUint16(4, 20, true);            // version made by
+      cdView.setUint16(6, 20, true);            // version needed
+      cdView.setUint16(8, 0x0008, true);        // flags
+      cdView.setUint16(10, 0, true);            // compression: STORE
+      cdView.setUint16(12, 0, true);            // mod time
+      cdView.setUint16(14, 0, true);            // mod date
+      cdView.setUint32(16, entry.crc, true);
+      cdView.setUint32(20, entry.size, true);   // compressed
+      cdView.setUint32(24, entry.size, true);   // uncompressed
+      cdView.setUint16(28, entry.nameBytes.length, true);
+      cdView.setUint16(30, 0, true);            // extra length
+      cdView.setUint16(32, 0, true);            // comment length
+      cdView.setUint16(34, 0, true);            // disk start
+      cdView.setUint16(36, 0, true);            // internal attrs
+      cdView.setUint32(38, 0, true);            // external attrs
+      cdView.setUint32(42, entry.offset, true); // local header offset
+      cdHeader.set(entry.nameBytes, 46);
+      await writer.write(cdHeader);
+      offset += cdHeader.length;
+    }
+
+    // End of central directory
+    const eocd = new Uint8Array(22);
+    const eocdView = new DataView(eocd.buffer);
+    eocdView.setUint32(0, 0x06054b50, true);
+    eocdView.setUint16(4, 0, true);              // disk number
+    eocdView.setUint16(6, 0, true);              // disk with CD
+    eocdView.setUint16(8, centralEntries.length, true);
+    eocdView.setUint16(10, centralEntries.length, true);
+    eocdView.setUint32(12, offset - centralStart, true);
+    eocdView.setUint32(16, centralStart, true);
+    eocdView.setUint16(20, 0, true);             // comment length
+    await writer.write(eocd);
+  } finally {
+    await writer.close();
+  }
+}
+
+// CRC32 (IEEE 802.3) — table-based for performance
+const crc32Table = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let j = 0; j < 8; j++) {
+      c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    }
+    table[i] = c;
+  }
+  return table;
+})();
+
+function crc32update(crc, data) {
+  for (let i = 0; i < data.length; i++) {
+    crc = crc32Table[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
+  }
+  return crc;
 }
 
 function requireAdmin(request, env) {

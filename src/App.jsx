@@ -132,52 +132,43 @@ function LandingRedirect() {
 // CELEBRATION — Full-screen animated overlay on challenge complete
 // ================================================================
 function Celebration() {
-  const containerRef = useRef(null);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+  const [pieces] = useState(() => {
     const colors = ["#F4B324", "#ff6b6b", "#4ecdc4", "#45b7d1", "#ff9ff3", "#a29bfe", "#55efc4", "#fab1a0"];
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-
-    for (let i = 0; i < 40; i++) {
-      const piece = document.createElement("span");
-      piece.className = i % 2 === 0 ? "confetti-piece" : "confetti-piece confetti-round";
-      piece.style.left = `${50 + (Math.random() - 0.5) * 20}%`;
-      piece.style.bottom = "40%";
-      piece.style.background = colors[i % 8];
-      container.appendChild(piece);
-
-      // Use px instead of vw/vh — iOS Safari doesn't support viewport units in Web Animations API
-      const tx = Math.round((Math.random() - 0.5) * vw);
-      const ty = Math.round((-60 - Math.random() * 40) * vh / 100);
-      const rot = Math.round(Math.random() * 720 - 360);
-
-      piece.animate(
-        [
-          { transform: "translate(0px,0px) rotate(0deg) scale(1)", opacity: 1 },
-          {
-            transform: `translate(${tx}px, ${ty}px) rotate(${rot}deg) scale(0.5)`,
-            opacity: 0,
-          },
-        ],
-        {
-          duration: (0.8 + Math.random() * 1.2) * 1000,
-          delay: Math.random() * 300,
-          easing: "cubic-bezier(0.2, 0.8, 0.3, 1)",
-          fill: "forwards",
-        }
-      );
-    }
-  }, []);
+    return Array.from({ length: 40 }, (_, i) => ({
+      id: i,
+      color: colors[i % 8],
+      round: i % 2 !== 0,
+      left: 50 + (Math.random() - 0.5) * 20,
+      tx: Math.round((Math.random() - 0.5) * 80),
+      ty: Math.round(-50 - Math.random() * 30),
+      rot: Math.round(Math.random() * 720 - 360),
+      dur: (0.8 + Math.random() * 1.2).toFixed(2),
+      delay: (Math.random() * 0.3).toFixed(2),
+    }));
+  });
 
   return (
-    <div className="celebration-overlay" ref={containerRef}>
+    <div className="celebration-overlay">
       <div className="celebration-content">
         <span className="celebration-emoji">🎉</span>
         <p className="celebration-text">Geschafft!</p>
       </div>
+      {pieces.map((p) => (
+        <span
+          key={p.id}
+          className={`confetti-piece ${p.round ? "confetti-round" : ""} confetti-fly`}
+          style={{
+            left: `${p.left}%`,
+            bottom: "40%",
+            background: p.color,
+            "--tx": `${p.tx}vw`,
+            "--ty": `${p.ty}vh`,
+            "--rot": `${p.rot}deg`,
+            animationDuration: `${p.dur}s`,
+            animationDelay: `${p.delay}s`,
+          }}
+        />
+      ))}
     </div>
   );
 }
@@ -234,6 +225,7 @@ function HomePage() {
   const confettiTimer = useRef(null);
   const toastTimer = useRef(null);
   const hasLoaded = useRef(false);
+  const initialLoadDone = useRef(false);
 
   useEffect(() => {
     const savedName = localStorage.getItem("userName");
@@ -251,10 +243,12 @@ function HomePage() {
       }
     }
     hasLoaded.current = true;
+    // Defer save-enable to next tick so the initial setState has rendered
+    requestAnimationFrame(() => { initialLoadDone.current = true; });
   }, []);
 
   useEffect(() => {
-    if (hasLoaded.current) {
+    if (initialLoadDone.current) {
       localStorage.setItem("progress", JSON.stringify(done));
     }
   }, [done]);
@@ -441,6 +435,7 @@ function UploadModal({ challenge, onClose, onSuccess, userName }) {
   const cameraRef = useRef();
   const galleryRef = useRef();
   const [uploading, setUploading] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const [preview, setPreview] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [error, setError] = useState(null);
@@ -469,11 +464,21 @@ function UploadModal({ challenge, onClose, onSuccess, userName }) {
 
   async function confirmUpload() {
     if (!selectedFile) return;
-    setUploading(true);
     setError(null);
+
+    // Client-side size check before expensive processing
+    const maxClientMb = 25;
+    if (selectedFile.size > maxClientMb * 1024 * 1024) {
+      setError(`Bild ist zu groß (${Math.round(selectedFile.size / 1024 / 1024)} MB). Maximal ${maxClientMb} MB.`);
+      return;
+    }
+
+    setUploading(true);
+    setProcessing(true);
 
     try {
       const { original, thumb } = await processImage(selectedFile);
+      setProcessing(false);
 
       const form = new FormData();
       form.append("photo", original, "photo.jpg");
@@ -533,7 +538,7 @@ function UploadModal({ challenge, onClose, onSuccess, userName }) {
             {uploading ? (
               <div className="uploading">
                 <Loader size={24} className="spin" />
-                <span>Wird hochgeladen…</span>
+                <span>{processing ? "Bild wird vorbereitet…" : "Wird hochgeladen…"}</span>
               </div>
             ) : (
               <div className="preview-actions">
@@ -625,9 +630,6 @@ function AdminPage() {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [zipStatus, setZipStatus] = useState("");
-  const [zipProgress, setZipProgress] = useState(0);
-  const [zipping, setZipping] = useState(false);
   const [viewer, setViewer] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [deleting, setDeleting] = useState(null);
@@ -672,64 +674,19 @@ function AdminPage() {
   }
 
   async function downloadZip(categoryId) {
-    const targetPhotos = categoryId ? photos.filter((p) => (p.challengeId || p.key.split("/")[0]) === categoryId) : photos;
+    const targetPhotos = photos.filter((p) => (p.challengeId || p.key.split("/")[0]) === categoryId);
 
     if (targetPhotos.length === 0) {
       setError("Keine Fotos zum Herunterladen.");
       return;
     }
 
-    setZipping(true);
-    setError("");
-    setZipStatus("Lade Fotos…");
-    setZipProgress(0);
-
-    try {
-      const headers = { "x-admin-token": token };
-      const { default: JSZip } = await import("jszip");
-      const zip = new JSZip();
-
-      const BATCH_SIZE = 5;
-      for (let i = 0; i < targetPhotos.length; i += BATCH_SIZE) {
-        const batch = targetPhotos.slice(i, i + BATCH_SIZE);
-        const results = await Promise.all(
-          batch.map(async (photo) => {
-            try {
-              const res = await fetch(`${API_BASE}/photo/full/${encodeURIComponent(photo.key)}`, { headers });
-              if (!res.ok) return null;
-              return { key: photo.key, blob: await res.blob() };
-            } catch {
-              return null;
-            }
-          })
-        );
-
-        for (const r of results) {
-          if (r) zip.file(r.key, r.blob);
-        }
-
-        const done = Math.min(i + BATCH_SIZE, targetPhotos.length);
-        setZipProgress((done / targetPhotos.length) * 100);
-        setZipStatus(`Lade Foto ${done} / ${targetPhotos.length}…`);
-      }
-
-      setZipStatus("Erstelle ZIP-Datei…");
-      const zipBlob = await zip.generateAsync({ type: "blob", compression: "STORE" });
-
-      const url = URL.createObjectURL(zipBlob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = categoryId ? `foto-challenge-${categoryId}.zip` : "foto-challenge.zip";
-      a.click();
-      URL.revokeObjectURL(url);
-
-      setZipStatus(`${targetPhotos.length} Fotos heruntergeladen.`);
-    } catch (err) {
-      setError(err.message || "ZIP Download fehlgeschlagen");
-      setZipStatus("");
-    } finally {
-      setZipping(false);
-    }
+    // Direct browser download via Worker-streamed ZIP (no memory issues)
+    const zipUrl = `${API_BASE}/download/zip?challenge=${encodeURIComponent(categoryId)}&token=${encodeURIComponent(token)}`;
+    const a = document.createElement("a");
+    a.href = zipUrl;
+    a.download = "";
+    a.click();
   }
 
   function openFullSize(photo) {
@@ -820,23 +777,9 @@ function AdminPage() {
           >
             <RefreshCw size={18} className={refreshing ? "spin" : ""} />
           </button>
-          <button className="btn-zip" onClick={() => downloadZip()} disabled={zipping}>
-            <Download size={18} />
-            {zipping ? "Lädt…" : "Alle als ZIP"}
-          </button>
         </div>
       </div>
 
-      {zipping && (
-        <div className="admin-progress-section">
-          <div className="admin-progress-wrap">
-            <div className="admin-progress-bar" style={{ width: `${zipProgress}%` }} />
-          </div>
-          <p className="admin-status">{zipStatus}</p>
-        </div>
-      )}
-
-      {zipStatus && !zipping && <p className="admin-status">{zipStatus}</p>}
       {error && <p className="error">{error}</p>}
 
       {/* Gallery by Challenge */}
@@ -853,7 +796,6 @@ function AdminPage() {
               <button
                 className="btn-category-zip"
                 onClick={() => downloadZip(c.id)}
-                disabled={zipping}
                 title={`${c.title} als ZIP laden`}
               >
                 <Download size={14} />

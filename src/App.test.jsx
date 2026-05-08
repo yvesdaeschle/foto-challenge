@@ -342,7 +342,6 @@ describe("AdminPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Galerie")).toBeInTheDocument();
       expect(screen.getByText(/New Faces/)).toBeInTheDocument();
-      expect(screen.getByText("Alle als ZIP")).toBeInTheDocument();
     });
   });
 

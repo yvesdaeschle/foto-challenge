@@ -585,7 +585,24 @@ button:disabled {
   100% { transform: scale(1) rotate(0deg); }
 }
 
-/* confetti animated via Web Animations API */
+/* confetti — CSS-only animation for iOS compatibility */
+
+.confetti-fly {
+  animation-name: confetti-fly;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
+  animation-fill-mode: forwards;
+}
+
+@keyframes confetti-fly {
+  0% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--tx), var(--ty)) rotate(var(--rot)) scale(0.5);
+    opacity: 0;
+  }
+}
 
 /* ==================== ERROR ==================== */
 

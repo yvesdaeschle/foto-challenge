@@ -59,9 +59,97 @@ In den Browser-DevTools → Application → Local Storage → die Einträge `pro
 
 ## Admin
 
-Unter `/admin` mit dem Admin-Token anmelden. Die Galerie zeigt alle Fotos nach Challenge sortiert. Fotos können einzeln oder als ZIP (pro Kategorie oder alle) heruntergeladen werden.
+Unter `/admin` mit dem Admin-Token anmelden. Die Galerie zeigt alle Fotos nach Challenge sortiert. Fotos können einzeln gelöscht oder als ZIP (pro Kategorie) heruntergeladen werden.
 
 Die Dateinamen im R2-Storage enthalten den Namen des Fotografen:
 ```
-01-new-faces/MaxMustermann-1752345678-abc123.jpg
+original/01-new-faces/MaxMustermann-1752345678-abc123.jpg
+thumbs/01-new-faces/MaxMustermann-1752345678-abc123.jpg
 ```
+
+## Alle Fotos herunterladen (Bulk-Download via CLI)
+
+Für den vollständigen Download aller Fotos (z.B. 1500 Bilder, 4.5 GB) empfiehlt sich der direkte R2-Zugriff über die CLI. Dies ist schneller, resumable und benötigt kein Browser-Memory.
+
+### Variante A: Wrangler CLI (empfohlen)
+
+```bash
+# 1. Wrangler installieren (falls nicht vorhanden)
+npm install -g wrangler
+
+# 2. Bei Cloudflare anmelden
+wrangler login
+
+# 3. Alle Fotos auflisten
+wrangler r2 object list foto-challenge-uploads --prefix "original/"
+
+# 4. Einzelnes Foto herunterladen
+wrangler r2 object get foto-challenge-uploads "original/01-new-faces/Max-1234-abc.jpg" --file ./downloads/Max.jpg
+
+# 5. Alle Fotos eines Challenges herunterladen (Bash/PowerShell-Skript)
+```
+
+#### PowerShell-Skript: Alle Fotos herunterladen
+
+```powershell
+# Zielordner erstellen
+New-Item -ItemType Directory -Force -Path "./alle-fotos"
+
+# Alle Keys auflisten und herunterladen
+$objects = wrangler r2 object list foto-challenge-uploads --prefix "original/" | ConvertFrom-Json
+foreach ($obj in $objects.objects) {
+    $key = $obj.key
+    $localPath = "./alle-fotos/$($key -replace '^original/', '')"
+    $dir = Split-Path $localPath -Parent
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    Write-Host "Downloading: $key"
+    wrangler r2 object get foto-challenge-uploads $key --file $localPath
+}
+Write-Host "Fertig! $($objects.objects.Count) Fotos heruntergeladen."
+```
+
+#### Bash-Skript: Alle Fotos herunterladen
+
+```bash
+#!/bin/bash
+mkdir -p ./alle-fotos
+
+wrangler r2 object list foto-challenge-uploads --prefix "original/" --json \
+  | jq -r '.objects[].key' \
+  | while read key; do
+      local_path="./alle-fotos/${key#original/}"
+      mkdir -p "$(dirname "$local_path")"
+      echo "Downloading: $key"
+      wrangler r2 object get foto-challenge-uploads "$key" --file "$local_path"
+    done
+
+echo "Fertig!"
+```
+
+### Variante B: rclone (für sehr große Mengen)
+
+```bash
+# 1. rclone installieren: https://rclone.org/install/
+
+# 2. R2 als Remote konfigurieren
+rclone config
+# → Name: r2
+# → Type: s3
+# → Provider: Cloudflare
+# → Access Key / Secret: aus Cloudflare Dashboard → R2 → API Tokens
+# → Endpoint: https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+
+# 3. Alle Fotos synchronisieren (resumable, parallel)
+rclone sync r2:foto-challenge-uploads/original/ ./alle-fotos/ --progress
+
+# 4. Nur eine Challenge herunterladen
+rclone sync r2:foto-challenge-uploads/original/01-new-faces/ ./neue-gesichter/ --progress
+```
+
+### Kosten
+
+| Operation | Menge | Kosten |
+|-----------|-------|--------|
+| R2 Class B (GET) | 1500 Downloads | $0 (10M free/month) |
+| R2 Egress | 4.5 GB | $0 (R2 hat keine Egress-Gebühren) |
+| **Gesamt** | | **$0** |

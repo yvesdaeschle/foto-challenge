@@ -129,21 +129,21 @@ function LandingRedirect() {
 }
 
 // ================================================================
-// CELEBRATION — Full-screen animated overlay on challenge complete
+// CELEBRATION — Full-screen confetti rain on challenge complete
 // ================================================================
 function Celebration() {
   const [pieces] = useState(() => {
-    const colors = ["#F4B324", "#ff6b6b", "#4ecdc4", "#45b7d1", "#ff9ff3", "#a29bfe", "#55efc4", "#fab1a0"];
-    return Array.from({ length: 40 }, (_, i) => ({
+    const colors = ["#F4B324", "#ff6b6b", "#4ecdc4", "#45b7d1", "#ff9ff3", "#a29bfe", "#55efc4", "#fab1a0", "#fd79a8", "#e17055"];
+    return Array.from({ length: 60 }, (_, i) => ({
       id: i,
-      color: colors[i % 8],
-      round: i % 2 !== 0,
-      left: 50 + (Math.random() - 0.5) * 20,
-      tx: Math.round((Math.random() - 0.5) * 80),
-      ty: Math.round(-50 - Math.random() * 30),
-      rot: Math.round(Math.random() * 720 - 360),
-      dur: (0.8 + Math.random() * 1.2).toFixed(2),
-      delay: (Math.random() * 0.3).toFixed(2),
+      color: colors[i % colors.length],
+      left: (Math.random() * 100).toFixed(1),
+      size: (6 + Math.random() * 8).toFixed(0),
+      dur: (2 + Math.random() * 2).toFixed(2),
+      delay: (Math.random() * 2.5).toFixed(2),
+      drift: ((Math.random() - 0.5) * 60).toFixed(0),
+      rotEnd: (Math.random() * 720 - 360).toFixed(0),
+      shape: i % 3, // 0=rect, 1=circle, 2=strip
     }));
   });
 
@@ -156,14 +156,12 @@ function Celebration() {
       {pieces.map((p) => (
         <span
           key={p.id}
-          className={`confetti-piece ${p.round ? "confetti-round" : ""} confetti-fly`}
+          className={`confetti-piece confetti-shape-${p.shape} confetti-rain`}
           style={{
             left: `${p.left}%`,
-            bottom: "40%",
+            width: p.shape === 2 ? `${p.size * 0.4}px` : `${p.size}px`,
+            height: p.shape === 2 ? `${p.size * 2.5}px` : `${p.size}px`,
             background: p.color,
-            "--tx": `${p.tx}vw`,
-            "--ty": `${p.ty}vh`,
-            "--rot": `${p.rot}deg`,
             animationDuration: `${p.dur}s`,
             animationDelay: `${p.delay}s`,
           }}

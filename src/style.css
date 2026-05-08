@@ -556,15 +556,16 @@ button:disabled {
 
 .confetti-piece {
   position: absolute;
-  width: 10px;
-  height: 10px;
+  top: -20px;
   border-radius: 2px;
 }
 
-.confetti-round {
+.confetti-shape-1 {
   border-radius: 50%;
-  width: 8px;
-  height: 8px;
+}
+
+.confetti-shape-2 {
+  border-radius: 1px;
 }
 
 @keyframes celebration-fade {
@@ -585,23 +586,35 @@ button:disabled {
   100% { transform: scale(1) rotate(0deg); }
 }
 
-/* confetti — CSS-only animation for iOS compatibility */
+/* Confetti rain — iOS compatible (no CSS vars in keyframes) */
 
-.confetti-fly {
-  animation-name: confetti-fly;
-  animation-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
-  animation-fill-mode: forwards;
+.confetti-rain {
+  animation-name: confetti-fall, confetti-wobble;
+  animation-timing-function: ease-in, ease-in-out;
+  animation-fill-mode: forwards, forwards;
+  animation-iteration-count: 1, 3;
 }
 
-@keyframes confetti-fly {
+@keyframes confetti-fall {
   0% {
-    transform: translate(0, 0) rotate(0deg) scale(1);
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  80% {
     opacity: 1;
   }
   100% {
-    transform: translate(var(--tx), var(--ty)) rotate(var(--rot)) scale(0.5);
+    transform: translateY(105vh) rotate(720deg);
     opacity: 0;
   }
+}
+
+@keyframes confetti-wobble {
+  0% { margin-left: 0; }
+  25% { margin-left: 30px; }
+  50% { margin-left: -20px; }
+  75% { margin-left: 15px; }
+  100% { margin-left: -10px; }
 }
 
 /* ==================== ERROR ==================== */

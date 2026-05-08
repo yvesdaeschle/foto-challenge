@@ -271,7 +271,7 @@ async function handleDownloadZip(request, env, url) {
   const queryToken = url.searchParams.get("token") || "";
   const token = headerToken || queryToken;
 
-  if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) {
+  if (!env.ADMIN_TOKEN || !timingSafeEqual(token, env.ADMIN_TOKEN)) {
     return Response.json({ error: "Unauthorized" }, { status: 401, headers: jsonHeaders });
   }
 
@@ -448,11 +448,23 @@ function crc32update(crc, data) {
 function requireAdmin(request, env) {
   const token = request.headers.get("x-admin-token") || "";
 
-  if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) {
+  if (!env.ADMIN_TOKEN || !timingSafeEqual(token, env.ADMIN_TOKEN)) {
     return Response.json({ error: "Unauthorized" }, { status: 401, headers: jsonHeaders });
   }
 
   return null;
+}
+
+function timingSafeEqual(a, b) {
+  if (a.length !== b.length) return false;
+  const enc = new TextEncoder();
+  const bufA = enc.encode(a);
+  const bufB = enc.encode(b);
+  let result = 0;
+  for (let i = 0; i < bufA.length; i++) {
+    result |= bufA[i] ^ bufB[i];
+  }
+  return result === 0;
 }
 
 function corsHeaders(request, env) {

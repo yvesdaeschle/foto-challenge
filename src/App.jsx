@@ -109,13 +109,37 @@ const challenges = [
 ];
 
 // ================================================================
+// ERROR BOUNDARY
+// ================================================================
+class ErrorBoundary extends React.Component {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="container" style={{ textAlign: "center", paddingTop: 80 }}>
+          <p style={{ fontSize: 48 }}>😕</p>
+          <p style={{ fontSize: 18, fontWeight: 600, margin: "16px 0" }}>Etwas ist schiefgelaufen.</p>
+          <button className="btn-full btn-primary" onClick={() => window.location.reload()}>
+            Seite neu laden
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ================================================================
 // APP
 // ================================================================
 export default function App() {
   const route = getRoute();
-  if (route === "admin") return <AdminPage />;
-  if (route === "home") return <HomePage />;
-  return <LandingRedirect />;
+  return (
+    <ErrorBoundary>
+      {route === "admin" ? <AdminPage /> : route === "home" ? <HomePage /> : <LandingRedirect />}
+    </ErrorBoundary>
+  );
 }
 
 function LandingRedirect() {
@@ -268,6 +292,9 @@ function HomePage() {
 
   const handleUploadSuccess = useCallback(
     (challengeId) => {
+      // Haptic feedback on mobile
+      if (navigator.vibrate) navigator.vibrate(50);
+
       setDone((d) => {
         const next = { ...d, [challengeId]: true };
         // Trigger celebration only when all 5 challenges are done
@@ -455,7 +482,26 @@ function UploadModal({ challenge, onClose, onSuccess, userName }) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (preview) URL.revokeObjectURL(preview);
-    setPreview(URL.createObjectURL(file));
+    // Use createImageBitmap to render a correctly-oriented preview (EXIF fix for older Android)
+    if (typeof createImageBitmap === "function") {
+      createImageBitmap(file).then((bmp) => {
+        const canvas = document.createElement("canvas");
+        canvas.width = bmp.width;
+        canvas.height = bmp.height;
+        const scale = Math.min(1, 800 / Math.max(bmp.width, bmp.height));
+        canvas.width = Math.round(bmp.width * scale);
+        canvas.height = Math.round(bmp.height * scale);
+        canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          if (blob) setPreview(URL.createObjectURL(blob));
+          else setPreview(URL.createObjectURL(file));
+        }, "image/jpeg", 0.8);
+      }).catch(() => {
+        setPreview(URL.createObjectURL(file));
+      });
+    } else {
+      setPreview(URL.createObjectURL(file));
+    }
     setSelectedFile(file);
     setError(null);
   }
@@ -495,6 +541,7 @@ function UploadModal({ challenge, onClose, onSuccess, userName }) {
     } catch (err) {
       setError(err.message || "Upload fehlgeschlagen");
       setUploading(false);
+      setProcessing(false);
     }
   }
 
@@ -528,7 +575,16 @@ function UploadModal({ challenge, onClose, onSuccess, userName }) {
 
         <p className="modal-desc">{challenge.desc}</p>
 
-        {error && <p className="error">{error}</p>}
+        {error && (
+          <div className="error">
+            <p>{error}</p>
+            {selectedFile && !uploading && (
+              <button className="btn-retry" onClick={confirmUpload}>
+                <RefreshCw size={16} /> Nochmal versuchen
+              </button>
+            )}
+          </div>
+        )}
 
         {preview ? (
           <div className="preview-wrap">

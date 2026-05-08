@@ -67,66 +67,12 @@ original/01-new-faces/MaxMustermann-1752345678-abc123.jpg
 thumbs/01-new-faces/MaxMustermann-1752345678-abc123.jpg
 ```
 
-## Alle Fotos herunterladen (Bulk-Download via CLI)
+## Alle Fotos herunterladen (Bulk-Download)
 
-Für den vollständigen Download aller Fotos (z.B. 1500 Bilder, 4.5 GB) empfiehlt sich der direkte R2-Zugriff über die CLI. Dies ist schneller, resumable und benötigt kein Browser-Memory.
+### Im Browser (Admin)
+Unter `/admin` gibt es pro Challenge einen ZIP-Download-Button. Der Worker streamt die Fotos serverseitig als ZIP — kein Browser-Memory-Problem.
 
-### Variante A: Wrangler CLI (empfohlen)
-
-```bash
-# 1. Wrangler installieren (falls nicht vorhanden)
-npm install -g wrangler
-
-# 2. Bei Cloudflare anmelden
-wrangler login
-
-# 3. Alle Fotos auflisten
-wrangler r2 object list foto-challenge-uploads --prefix "original/"
-
-# 4. Einzelnes Foto herunterladen
-wrangler r2 object get foto-challenge-uploads "original/01-new-faces/Max-1234-abc.jpg" --file ./downloads/Max.jpg
-
-# 5. Alle Fotos eines Challenges herunterladen (Bash/PowerShell-Skript)
-```
-
-#### PowerShell-Skript: Alle Fotos herunterladen
-
-```powershell
-# Zielordner erstellen
-New-Item -ItemType Directory -Force -Path "./alle-fotos"
-
-# Alle Keys auflisten und herunterladen
-$objects = wrangler r2 object list foto-challenge-uploads --prefix "original/" | ConvertFrom-Json
-foreach ($obj in $objects.objects) {
-    $key = $obj.key
-    $localPath = "./alle-fotos/$($key -replace '^original/', '')"
-    $dir = Split-Path $localPath -Parent
-    New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    Write-Host "Downloading: $key"
-    wrangler r2 object get foto-challenge-uploads $key --file $localPath
-}
-Write-Host "Fertig! $($objects.objects.Count) Fotos heruntergeladen."
-```
-
-#### Bash-Skript: Alle Fotos herunterladen
-
-```bash
-#!/bin/bash
-mkdir -p ./alle-fotos
-
-wrangler r2 object list foto-challenge-uploads --prefix "original/" --json \
-  | jq -r '.objects[].key' \
-  | while read key; do
-      local_path="./alle-fotos/${key#original/}"
-      mkdir -p "$(dirname "$local_path")"
-      echo "Downloading: $key"
-      wrangler r2 object get foto-challenge-uploads "$key" --file "$local_path"
-    done
-
-echo "Fertig!"
-```
-
-### Variante B: rclone (für sehr große Mengen)
+### Via rclone (für den kompletten Bucket)
 
 ```bash
 # 1. rclone installieren: https://rclone.org/install/
@@ -148,8 +94,4 @@ rclone sync r2:foto-challenge-uploads/original/01-new-faces/ ./neue-gesichter/ -
 
 ### Kosten
 
-| Operation | Menge | Kosten |
-|-----------|-------|--------|
-| R2 Class B (GET) | 1500 Downloads | $0 (10M free/month) |
-| R2 Egress | 4.5 GB | $0 (R2 hat keine Egress-Gebühren) |
-| **Gesamt** | | **$0** |
+R2 hat **keine Egress-Gebühren**. Download beliebig oft = $0.

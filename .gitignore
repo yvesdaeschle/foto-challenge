@@ -18,6 +18,10 @@ Thumbs.db
 *.log
 npm-debug.log*
 
+# Downloaded photos
+alle-fotos/
+test-photo.*
+
 # Worker
 worker/.wrangler/
 worker/node_modules/

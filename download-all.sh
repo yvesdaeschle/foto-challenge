@@ -1,33 +1,31 @@
 #!/bin/bash
-# Download all photos from R2 bucket to a local directory.
-# Prerequisites: npm install -g wrangler && wrangler login
+# Download all original photos from R2 using rclone
+# Prerequisites: brew install rclone && rclone config (set up R2 remote named "r2")
+#
+# rclone config steps:
+#   Name: r2
+#   Type: s3
+#   Provider: Cloudflare
+#   Access Key ID: (from Cloudflare Dashboard → R2 → API Tokens)
+#   Secret Access Key: (from same token)
+#   Endpoint: https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+#   Leave rest as defaults
 
 set -e
 
+REMOTE="r2"
 BUCKET="foto-challenge-uploads"
 PREFIX="original/"
-OUTPUT_DIR="./alle-fotos"
+DEST="./alle-fotos"
 
-echo "📸 Downloading all photos from R2..."
-echo "   Bucket: $BUCKET"
-echo "   Output: $OUTPUT_DIR"
-echo ""
+if ! command -v rclone &> /dev/null; then
+  echo "rclone not found. Install with: brew install rclone"
+  exit 1
+fi
 
-mkdir -p "$OUTPUT_DIR"
-
-# List all objects and download them
-wrangler r2 object list "$BUCKET" --prefix "$PREFIX" --json \
-  | jq -r '.objects[].key' \
-  | while IFS= read -r key; do
-      # Strip the "original/" prefix for local path
-      local_path="$OUTPUT_DIR/${key#$PREFIX}"
-      local_dir="$(dirname "$local_path")"
-
-      mkdir -p "$local_dir"
-      echo "⬇️  $key"
-      wrangler r2 object get "$BUCKET" "$key" --file "$local_path"
-    done
+echo "Downloading all photos to $DEST ..."
+rclone sync "$REMOTE:$BUCKET/$PREFIX" "$DEST" --progress --transfers 8
 
 echo ""
-echo "✅ Done! Photos saved to $OUTPUT_DIR"
-echo "   Total: $(find "$OUTPUT_DIR" -type f | wc -l | tr -d ' ') files"
+echo "Done! Photos saved to $DEST"
+echo "Total: $(find "$DEST" -type f | wc -l | tr -d ' ') files"

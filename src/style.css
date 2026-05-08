@@ -606,7 +606,18 @@ button:disabled {
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.5);
-  /* opacity stays at 1; React unmounts the component after 5.5s */
+  /* Fade the whole overlay out near the end. The fade only animates opacity,
+     it does NOT hide the card initially — the card has opacity:1 by default,
+     so even if iOS skips the inner pop animation the card stays visible. */
+  -webkit-animation: celebration-fade-out 0.6s ease-out 3s forwards;
+          animation: celebration-fade-out 0.6s ease-out 3s forwards;
+}
+
+@-webkit-keyframes celebration-fade-out {
+  to { opacity: 0; }
+}
+@keyframes celebration-fade-out {
+  to { opacity: 0; }
 }
 
 .celebration-content {

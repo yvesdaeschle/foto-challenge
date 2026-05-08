@@ -179,8 +179,8 @@ function Celebration() {
       color: colors[i % colors.length],
       left: Math.random() * 100,
       size: 6 + Math.random() * 8,
-      dur: 3 + Math.random() * 2,
-      delay: Math.random() * 1.5,
+      dur: 2.2 + Math.random() * 1.2, // 2.2–3.4s
+      delay: Math.random() * 0.4,     // 0–0.4s
       shape: i % 3, // 0=rect, 1=circle, 2=strip
       rotEnd: 360 + Math.floor(Math.random() * 720) * (i % 2 ? 1 : -1),
     }));
@@ -301,7 +301,7 @@ function HomePage() {
     if (params.get("celebrate") === "1") {
       setConfettiKey(1);
       if (confettiTimer.current) clearTimeout(confettiTimer.current);
-      confettiTimer.current = setTimeout(() => setConfettiKey(0), 5500);
+      confettiTimer.current = setTimeout(() => setConfettiKey(0), 3700);
     }
   }, []);
 
@@ -322,7 +322,7 @@ function HomePage() {
         if (isAllDone && !wasAllDone) {
           if (confettiTimer.current) clearTimeout(confettiTimer.current);
           setConfettiKey((k) => k + 1);
-          confettiTimer.current = setTimeout(() => setConfettiKey(0), 5500);
+          confettiTimer.current = setTimeout(() => setConfettiKey(0), 3700);
         }
         return next;
       });

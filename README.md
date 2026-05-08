@@ -39,6 +39,57 @@ MAX_FILE_SIZE_MB=12
 wrangler secret put ADMIN_TOKEN
 ```
 
+## Testing
+
+### Unit-Tests
+
+```bash
+npm test             # einmalig
+npm run test:watch   # Watch-Modus
+```
+
+28 Tests in `src/App.test.jsx` decken Routing, Challenge-State, Upload-Flow (mit MockXHR), Admin-Galerie, ConfirmDialog, Idempotenz und Reset-Flow ab.
+
+### Smoke-Test gegen Worker
+
+End-to-End-Tests gegen einen lebenden Worker (CORS, Auth, Upload-Validierung, Idempotenz, echtes Replace, ZIP-Integrität, Bulk-Delete). Voraussetzungen: `bash`, `curl`, `jq`, `python3`, `unzip`.
+
+```bash
+# Standard-Run gegen Production
+ADMIN_TOKEN=xxx ./smoke-test.sh
+
+# Gegen Staging-Worker
+WORKER_URL=https://staging.example.workers.dev \
+  ORIGIN=https://staging.foto-challenge.pages.dev \
+  ADMIN_TOKEN=xxx ./smoke-test.sh
+```
+
+#### Lasttest (optional)
+
+Lädt N Fotos parallel hoch, verifiziert die Anzahl, ruft Bulk-Delete und prüft, dass der Bucket danach leer ist.
+
+```bash
+LOAD_COUNT=100 LOAD_PARALLEL=8 ADMIN_TOKEN=xxx ./smoke-test.sh
+```
+
+| Variable        | Default | Bedeutung                                      |
+|-----------------|---------|------------------------------------------------|
+| `LOAD_COUNT`    | 0 (off) | Anzahl Test-Uploads. 0 deaktiviert den Test.   |
+| `LOAD_PARALLEL` | 8       | Parallele Upload-Worker (`xargs -P`).          |
+| `ADMIN_TOKEN`   | —       | Pflicht für Admin-Endpunkte (sonst werden sie übersprungen). |
+| `WORKER_URL`    | Prod-Worker | Ziel-Worker.                              |
+| `ORIGIN`        | Prod-Pages | Origin-Header für CORS-Checks.             |
+
+### Celebration-Animation auf einem echten Gerät testen
+
+Statt 5 Uploads durchzuspielen lässt sich die Animation direkt aufrufen:
+
+```
+https://<deine-pages-url>/125?celebrate=1
+```
+
+Die Konfetti-Animation feuert dann beim Laden der Seite einmal — nützlich, um sie schnell auf iPhones / Android Geräten zu validieren.
+
 ## Progress zurücksetzen
 
 Es gibt zwei Wege, den Fortschritt eines Benutzers zurückzusetzen:
@@ -59,12 +110,18 @@ In den Browser-DevTools → Application → Local Storage → die Einträge `pro
 
 ## Admin
 
-Unter `/admin` mit dem Admin-Token anmelden. Die Galerie zeigt alle Fotos nach Challenge sortiert. Fotos können einzeln gelöscht oder als ZIP (pro Kategorie) heruntergeladen werden.
+Unter `/admin` mit dem Admin-Token anmelden. Die Galerie zeigt alle Fotos nach Challenge sortiert. Aktionen:
 
-Die Dateinamen im R2-Storage enthalten den Namen des Fotografen:
+- **Foto öffnen** → Vollbild-Viewer mit Download-Button
+- **Foto löschen** → einzelnes Foto entfernen (Original + Thumb)
+- **Alle löschen** → kompletter Bucket-Reset (Bulk-Delete in einem API-Call); zur Sicherheit muss `LÖSCHEN` getippt werden
+- **ZIP pro Challenge** → der Worker streamt die Fotos serverseitig als ZIP (kein Browser-Memory-Problem)
+
+Die Dateinamen im R2-Storage enthalten den Namen des Fotografen plus den Idempotency-Key des Uploads. Re-Uploads ("Foto ersetzen") überschreiben **dasselbe** R2-Objekt anstatt ein zweites anzulegen:
+
 ```
-original/01-new-faces/MaxMustermann-1752345678-abc123.jpg
-thumbs/01-new-faces/MaxMustermann-1752345678-abc123.jpg
+original/01-new-faces/MaxMustermann-<uuid>.jpg
+thumbs/01-new-faces/MaxMustermann-<uuid>.jpg
 ```
 
 ## Alle Fotos herunterladen (Bulk-Download)

@@ -167,42 +167,46 @@ function LandingRedirect() {
 
 // ================================================================
 // CELEBRATION — Full-screen confetti rain on challenge complete
+// Designed to degrade gracefully on iOS Safari: the "Geschafft!" card is
+// visible by default (no animation needed), and confetti uses a single
+// simple keyframe rather than per-piece variants.
 // ================================================================
 function Celebration() {
   const [pieces] = useState(() => {
     const colors = ["#F4B324", "#ff6b6b", "#4ecdc4", "#45b7d1", "#ff9ff3", "#a29bfe", "#55efc4", "#fab1a0", "#fd79a8", "#e17055"];
-    // Generate unique keyframe class index (0-9) for each piece for wobble variety
-    return Array.from({ length: 60 }, (_, i) => ({
+    return Array.from({ length: 50 }, (_, i) => ({
       id: i,
       color: colors[i % colors.length],
-      left: (Math.random() * 100).toFixed(1),
-      size: (6 + Math.random() * 8).toFixed(0),
-      dur: (2.5 + Math.random() * 2).toFixed(2),
-      delay: (Math.random() * 2.5).toFixed(2),
+      left: Math.random() * 100,
+      size: 6 + Math.random() * 8,
+      dur: 3 + Math.random() * 2,
+      delay: Math.random() * 1.5,
       shape: i % 3, // 0=rect, 1=circle, 2=strip
-      wobble: i % 4, // 0-3 wobble variant
+      rotEnd: 360 + Math.floor(Math.random() * 720) * (i % 2 ? 1 : -1),
     }));
   });
 
   return (
     <div className="celebration-overlay">
       <div className="celebration-content">
-        <span className="celebration-emoji">🎉</span>
+        <span className="celebration-emoji" role="img" aria-label="Konfetti">🎉</span>
         <p className="celebration-text">Geschafft!</p>
       </div>
       {pieces.map((p) => (
         <span
           key={p.id}
-          className={`confetti-piece confetti-shape-${p.shape} confetti-fall confetti-wobble-${p.wobble}`}
+          className={`confetti-piece confetti-shape-${p.shape}`}
           style={{
-            left: `${p.left}%`,
-            width: p.shape === 2 ? `${p.size * 0.4}px` : `${p.size}px`,
-            height: p.shape === 2 ? `${p.size * 2.5}px` : `${p.size}px`,
+            left: `${p.left.toFixed(1)}%`,
+            width: p.shape === 2 ? `${(p.size * 0.4).toFixed(0)}px` : `${p.size.toFixed(0)}px`,
+            height: p.shape === 2 ? `${(p.size * 2.5).toFixed(0)}px` : `${p.size.toFixed(0)}px`,
             background: p.color,
-            animationDuration: `${p.dur}s`,
-            animationDelay: `${p.delay}s`,
-            WebkitAnimationDuration: `${p.dur}s`,
-            WebkitAnimationDelay: `${p.delay}s`,
+            // expose the random end-rotation as a CSS variable for the keyframe
+            "--rot-end": `${p.rotEnd}deg`,
+            animationDuration: `${p.dur.toFixed(2)}s`,
+            animationDelay: `${p.delay.toFixed(2)}s`,
+            WebkitAnimationDuration: `${p.dur.toFixed(2)}s`,
+            WebkitAnimationDelay: `${p.delay.toFixed(2)}s`,
           }}
         />
       ))}
@@ -288,18 +292,34 @@ function HomePage() {
     };
   }, []);
 
+  // Debug trigger: visiting the page with ?celebrate=1 fires the celebration once
+  // on mount. Lets us verify the animation on real devices without going through
+  // the full upload flow.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("celebrate") === "1") {
+      setConfettiKey(1);
+      if (confettiTimer.current) clearTimeout(confettiTimer.current);
+      confettiTimer.current = setTimeout(() => setConfettiKey(0), 5500);
+    }
+  }, []);
+
   const handleUploadSuccess = useCallback(
     (challengeId, thumbDataUrl, idempotencyKey) => {
       // Haptic feedback on mobile
       if (navigator.vibrate) navigator.vibrate(50);
 
       setDone((d) => {
+        const wasAllDone = challenges.every((c) => d[c.id]);
         const next = {
           ...d,
           [challengeId]: { done: true, thumb: thumbDataUrl || null, idempotencyKey: idempotencyKey || null },
         };
-        // Trigger celebration only when all 5 challenges are done
-        if (challenges.every((c) => next[c.id])) {
+        const isAllDone = challenges.every((c) => next[c.id]);
+        // Only celebrate on the *transition* to all-5; don't fire again on
+        // every replace upload once the user has already finished the set.
+        if (isAllDone && !wasAllDone) {
           if (confettiTimer.current) clearTimeout(confettiTimer.current);
           setConfettiKey((k) => k + 1);
           confettiTimer.current = setTimeout(() => setConfettiKey(0), 5500);

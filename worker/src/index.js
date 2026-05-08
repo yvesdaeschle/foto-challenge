@@ -345,8 +345,13 @@ async function handleDownloadZip(request, env, url) {
 
   const { readable, writable } = new TransformStream();
 
-  // Start streaming ZIP in the background
-  streamZip(env, files, writable);
+  // Start streaming ZIP in the background. Any error must abort the writable
+  // so the client receives a TCP close instead of a hung connection.
+  streamZip(env, files, writable).catch((err) => {
+    try {
+      writable.abort(err);
+    } catch { /* writable may already be closed */ }
+  });
 
   const headers = new Headers();
   headers.set("content-type", "application/zip");
@@ -361,6 +366,7 @@ async function streamZip(env, files, writable) {
   const encoder = new TextEncoder();
   const centralEntries = [];
   let offset = 0;
+  let aborted = false;
 
   try {
     for (const fileObj of files) {
@@ -458,8 +464,14 @@ async function streamZip(env, files, writable) {
     eocdView.setUint32(16, centralStart, true);
     eocdView.setUint16(20, 0, true);             // comment length
     await writer.write(eocd);
+  } catch (err) {
+    aborted = true;
+    try { await writer.abort(err); } catch { /* already aborted/closed */ }
+    throw err;
   } finally {
-    await writer.close();
+    if (!aborted) {
+      try { await writer.close(); } catch { /* already closed */ }
+    }
   }
 }
 

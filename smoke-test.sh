@@ -244,6 +244,89 @@ if [ -n "$SITE_URL" ]; then
 fi
 
 # ============================================================
+section "9. Load test (LOAD_COUNT uploads + bulk delete)"
+# ============================================================
+# Off by default. Enable with LOAD_COUNT=100 ./smoke-test.sh
+LOAD_COUNT="${LOAD_COUNT:-0}"
+LOAD_PARALLEL="${LOAD_PARALLEL:-8}"
+
+if [ "$LOAD_COUNT" -gt 0 ] && [ -z "$ADMIN_TOKEN" ]; then
+  printf "  ${Y}⚠  LOAD_COUNT=%s requested but ADMIN_TOKEN missing — skipping${N}\n" "$LOAD_COUNT"
+elif [ "$LOAD_COUNT" -gt 0 ]; then
+  BATCH_TAG="loadtest-$(date +%s)"
+  printf "  ${D}Uploading %d photos (%d parallel) tagged %s...${N}\n" "$LOAD_COUNT" "$LOAD_PARALLEL" "$BATCH_TAG"
+
+  # Baseline count before the load test
+  BASELINE=$(curl "${CURL_OPTS[@]}" -H "Origin: $ORIGIN" -H "x-admin-token: $ADMIN_TOKEN" \
+    "$WORKER_URL/photos" | jq -r '.photos | length // 0')
+
+  upload_one() {
+    local idx="$1"
+    local idem="$BATCH_TAG-$idx"
+    curl -sS --max-time 30 -X POST \
+      -H "Origin: $ORIGIN" \
+      -F "photo=@$JPEG;type=image/jpeg" \
+      -F "thumb=@$JPEG;type=image/jpeg" \
+      -F "challengeId=01-new-faces" \
+      -F "challengeTitle=Load Test" \
+      -F "name=$BATCH_TAG" \
+      -F "message=load test #$idx" \
+      -F "idempotencyKey=$idem" \
+      "$WORKER_URL/upload" \
+      | jq -r '.ok // false'
+  }
+  export -f upload_one
+  export JPEG ORIGIN WORKER_URL BATCH_TAG
+
+  T0=$(date +%s)
+  # Stream indices through xargs -P for parallelism, count "true" results
+  OK_COUNT=$(seq 1 "$LOAD_COUNT" \
+    | xargs -P "$LOAD_PARALLEL" -I{} bash -c 'upload_one "$@"' _ {} \
+    | grep -c '^true$' || true)
+  T1=$(date +%s)
+  ELAPSED=$((T1 - T0))
+  RATE=$(awk -v c="$OK_COUNT" -v t="$ELAPSED" 'BEGIN { if (t==0) t=1; printf "%.1f", c/t }')
+
+  if [ "$OK_COUNT" = "$LOAD_COUNT" ]; then
+    pass "Uploaded $OK_COUNT/$LOAD_COUNT photos in ${ELAPSED}s (${RATE} req/s)"
+  else
+    fail "load uploads" "$OK_COUNT/$LOAD_COUNT succeeded in ${ELAPSED}s"
+  fi
+
+  # Verify count grew by exactly LOAD_COUNT (baseline + LOAD_COUNT)
+  AFTER=$(curl "${CURL_OPTS[@]}" -H "Origin: $ORIGIN" -H "x-admin-token: $ADMIN_TOKEN" \
+    "$WORKER_URL/photos" | jq -r '.photos | length // 0')
+  EXPECTED=$((BASELINE + LOAD_COUNT))
+  if [ "$AFTER" -ge "$EXPECTED" ]; then
+    pass "GET /photos shows $AFTER photos (baseline $BASELINE + $LOAD_COUNT)"
+  else
+    fail "load count" "expected ≥ $EXPECTED, got $AFTER"
+  fi
+
+  # Bulk-delete everything (single API call) and assert all gone
+  T2=$(date +%s)
+  DEL_RESP=$(curl "${CURL_OPTS[@]}" -X DELETE \
+    -H "Origin: $ORIGIN" -H "x-admin-token: $ADMIN_TOKEN" \
+    "$WORKER_URL/photos")
+  T3=$(date +%s)
+  DEL_OK=$(printf '%s' "$DEL_RESP" | jq -r '.ok // false')
+  DEL_COUNT=$(printf '%s' "$DEL_RESP" | jq -r '.deleted // 0')
+  if [ "$DEL_OK" = "true" ] && [ "$DEL_COUNT" -ge "$LOAD_COUNT" ]; then
+    pass "DELETE /photos removed $DEL_COUNT in $((T3 - T2))s (single call)"
+  else
+    fail "bulk delete" "ok=$DEL_OK deleted=$DEL_COUNT (resp: $DEL_RESP)"
+  fi
+
+  FINAL=$(curl "${CURL_OPTS[@]}" -H "Origin: $ORIGIN" -H "x-admin-token: $ADMIN_TOKEN" \
+    "$WORKER_URL/photos" | jq -r '.photos | length // 0')
+  if [ "$FINAL" = "0" ]; then
+    pass "Bucket empty after bulk delete (0 photos)"
+  else
+    fail "post-delete count" "expected 0, got $FINAL"
+  fi
+fi
+
+# ============================================================
 printf "\n${B}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${N}\n"
 printf "${B}  Results: ${G}%d${N}/%d passed" "$PASS" "$TOTAL"
 [ "$FAIL" -gt 0 ] && printf ", ${R}%d failed${N}" "$FAIL"

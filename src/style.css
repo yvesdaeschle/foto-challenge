@@ -599,14 +599,14 @@ button:disabled {
 
 .celebration-overlay {
   position: fixed;
-  inset: 0;
+  top: 0; left: 0; right: 0; bottom: 0;
   z-index: 90;
   pointer-events: none;
   display: flex;
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.5);
-  animation: celebration-fade 5s ease both;
+  /* opacity stays at 1; React unmounts the component after 5.5s */
 }
 
 .celebration-content {
@@ -615,13 +615,20 @@ button:disabled {
   border-radius: 28px;
   padding: 48px 40px;
   box-shadow: var(--shadow-lg);
-  animation: celebration-pop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+  /* Visible by default. The pop animation is just polish — if iOS Safari
+     skips the animation, the card still appears immediately. */
+  opacity: 1;
+  -webkit-transform: translateZ(0) scale(1);
+          transform: translateZ(0) scale(1);
+  -webkit-animation: celebration-pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+          animation: celebration-pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .celebration-emoji {
   font-size: 100px;
   display: block;
-  animation: celebration-bounce 0.8s ease both;
+  -webkit-animation: celebration-bounce 0.8s ease;
+          animation: celebration-bounce 0.8s ease;
 }
 
 .celebration-text {
@@ -638,6 +645,17 @@ button:disabled {
   position: absolute;
   top: -20px;
   border-radius: 2px;
+  -webkit-animation-name: confetti-rain;
+          animation-name: confetti-rain;
+  -webkit-animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1);
+          animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1);
+  -webkit-animation-iteration-count: 1;
+          animation-iteration-count: 1;
+  -webkit-animation-fill-mode: forwards;
+          animation-fill-mode: forwards;
+  -webkit-backface-visibility: hidden;
+          backface-visibility: hidden;
+  will-change: transform, opacity;
 }
 
 .confetti-shape-1 {
@@ -648,104 +666,43 @@ button:disabled {
   border-radius: 1px;
 }
 
-@keyframes celebration-fade {
-  0%, 60% { opacity: 1; }
-  100% { opacity: 0; }
+@-webkit-keyframes celebration-pop {
+  0%   { -webkit-transform: translateZ(0) scale(0.3); opacity: 0; }
+  60%  { -webkit-transform: translateZ(0) scale(1.1); opacity: 1; }
+  100% { -webkit-transform: translateZ(0) scale(1);   opacity: 1; }
 }
-
 @keyframes celebration-pop {
-  0% { transform: scale(0); opacity: 0; }
-  60% { transform: scale(1.2); }
-  100% { transform: scale(1); opacity: 1; }
+  0%   { transform: translateZ(0) scale(0.3); opacity: 0; }
+  60%  { transform: translateZ(0) scale(1.1); opacity: 1; }
+  100% { transform: translateZ(0) scale(1);   opacity: 1; }
 }
 
+@-webkit-keyframes celebration-bounce {
+  0%   { -webkit-transform: scale(0) rotate(-20deg); }
+  50%  { -webkit-transform: scale(1.3) rotate(10deg); }
+  70%  { -webkit-transform: scale(0.9) rotate(-5deg); }
+  100% { -webkit-transform: scale(1) rotate(0deg); }
+}
 @keyframes celebration-bounce {
-  0% { transform: scale(0) rotate(-20deg); }
-  50% { transform: scale(1.3) rotate(10deg); }
-  70% { transform: scale(0.9) rotate(-5deg); }
+  0%   { transform: scale(0) rotate(-20deg); }
+  50%  { transform: scale(1.3) rotate(10deg); }
+  70%  { transform: scale(0.9) rotate(-5deg); }
   100% { transform: scale(1) rotate(0deg); }
 }
 
-/* Confetti rain — iOS Safari needs translate3d for GPU compositing,
-   and avoid setting an animation-name that has no matching keyframes. */
-
-.confetti-fall {
-  -webkit-animation-timing-function: ease-in;
-  animation-timing-function: ease-in;
-  -webkit-animation-fill-mode: forwards;
-  animation-fill-mode: forwards;
-  -webkit-animation-iteration-count: 1;
-  animation-iteration-count: 1;
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
-  will-change: transform, opacity;
-  -webkit-transform: translate3d(0, -10px, 0);
-  transform: translate3d(0, -10px, 0);
+/* Single confetti keyframe — falls straight down with a configurable end
+   rotation passed via the --rot-end CSS variable. iOS Safari 16+ supports
+   custom properties in keyframes; older versions ignore the variable and
+   fall back to the default rotation, which is still visible motion. */
+@-webkit-keyframes confetti-rain {
+  0%   { -webkit-transform: translate3d(0, 0, 0) rotate(0deg);                       opacity: 1; }
+  90%  {                                                                              opacity: 1; }
+  100% { -webkit-transform: translate3d(0, 110vh, 0) rotate(var(--rot-end, 540deg)); opacity: 0; }
 }
-
-.confetti-wobble-0 { -webkit-animation-name: confetti-wobble-0; animation-name: confetti-wobble-0; }
-.confetti-wobble-1 { -webkit-animation-name: confetti-wobble-1; animation-name: confetti-wobble-1; }
-.confetti-wobble-2 { -webkit-animation-name: confetti-wobble-2; animation-name: confetti-wobble-2; }
-.confetti-wobble-3 { -webkit-animation-name: confetti-wobble-3; animation-name: confetti-wobble-3; }
-
-@-webkit-keyframes confetti-wobble-0 {
-  0%   { -webkit-transform: translate3d(0,    -10px, 0) rotate(0deg);   opacity: 1; }
-  25%  { -webkit-transform: translate3d(30px, 25vh, 0)  rotate(180deg); opacity: 1; }
-  50%  { -webkit-transform: translate3d(-20px,50vh, 0)  rotate(360deg); opacity: 1; }
-  75%  { -webkit-transform: translate3d(15px, 75vh, 0)  rotate(540deg); opacity: 0.7; }
-  100% { -webkit-transform: translate3d(-10px,105vh,0)  rotate(720deg); opacity: 0; }
-}
-@keyframes confetti-wobble-0 {
-  0%   { transform: translate3d(0,    -10px, 0) rotate(0deg);   opacity: 1; }
-  25%  { transform: translate3d(30px, 25vh, 0)  rotate(180deg); opacity: 1; }
-  50%  { transform: translate3d(-20px,50vh, 0)  rotate(360deg); opacity: 1; }
-  75%  { transform: translate3d(15px, 75vh, 0)  rotate(540deg); opacity: 0.7; }
-  100% { transform: translate3d(-10px,105vh,0)  rotate(720deg); opacity: 0; }
-}
-
-@-webkit-keyframes confetti-wobble-1 {
-  0%   { -webkit-transform: translate3d(0,    -10px, 0) rotate(0deg);    opacity: 1; }
-  25%  { -webkit-transform: translate3d(-25px,25vh, 0)  rotate(-120deg); opacity: 1; }
-  50%  { -webkit-transform: translate3d(35px, 50vh, 0)  rotate(-240deg); opacity: 1; }
-  75%  { -webkit-transform: translate3d(-15px,75vh, 0)  rotate(-400deg); opacity: 0.7; }
-  100% { -webkit-transform: translate3d(20px, 105vh,0)  rotate(-540deg); opacity: 0; }
-}
-@keyframes confetti-wobble-1 {
-  0%   { transform: translate3d(0,    -10px, 0) rotate(0deg);    opacity: 1; }
-  25%  { transform: translate3d(-25px,25vh, 0)  rotate(-120deg); opacity: 1; }
-  50%  { transform: translate3d(35px, 50vh, 0)  rotate(-240deg); opacity: 1; }
-  75%  { transform: translate3d(-15px,75vh, 0)  rotate(-400deg); opacity: 0.7; }
-  100% { transform: translate3d(20px, 105vh,0)  rotate(-540deg); opacity: 0; }
-}
-
-@-webkit-keyframes confetti-wobble-2 {
-  0%   { -webkit-transform: translate3d(0,    -10px, 0) rotate(0deg);   opacity: 1; }
-  25%  { -webkit-transform: translate3d(20px, 25vh, 0)  rotate(90deg);  opacity: 1; }
-  50%  { -webkit-transform: translate3d(-30px,50vh, 0)  rotate(270deg); opacity: 1; }
-  75%  { -webkit-transform: translate3d(10px, 75vh, 0)  rotate(450deg); opacity: 0.7; }
-  100% { -webkit-transform: translate3d(-25px,105vh,0)  rotate(630deg); opacity: 0; }
-}
-@keyframes confetti-wobble-2 {
-  0%   { transform: translate3d(0,    -10px, 0) rotate(0deg);   opacity: 1; }
-  25%  { transform: translate3d(20px, 25vh, 0)  rotate(90deg);  opacity: 1; }
-  50%  { transform: translate3d(-30px,50vh, 0)  rotate(270deg); opacity: 1; }
-  75%  { transform: translate3d(10px, 75vh, 0)  rotate(450deg); opacity: 0.7; }
-  100% { transform: translate3d(-25px,105vh,0)  rotate(630deg); opacity: 0; }
-}
-
-@-webkit-keyframes confetti-wobble-3 {
-  0%   { -webkit-transform: translate3d(0,    -10px, 0) rotate(0deg);    opacity: 1; }
-  25%  { -webkit-transform: translate3d(-35px,25vh, 0)  rotate(-200deg); opacity: 1; }
-  50%  { -webkit-transform: translate3d(25px, 50vh, 0)  rotate(-360deg); opacity: 1; }
-  75%  { -webkit-transform: translate3d(-20px,75vh, 0)  rotate(-500deg); opacity: 0.7; }
-  100% { -webkit-transform: translate3d(15px, 105vh,0)  rotate(-680deg); opacity: 0; }
-}
-@keyframes confetti-wobble-3 {
-  0%   { transform: translate3d(0,    -10px, 0) rotate(0deg);    opacity: 1; }
-  25%  { transform: translate3d(-35px,25vh, 0)  rotate(-200deg); opacity: 1; }
-  50%  { transform: translate3d(25px, 50vh, 0)  rotate(-360deg); opacity: 1; }
-  75%  { transform: translate3d(-20px,75vh, 0)  rotate(-500deg); opacity: 0.7; }
-  100% { transform: translate3d(15px, 105vh,0)  rotate(-680deg); opacity: 0; }
+@keyframes confetti-rain {
+  0%   { transform: translate3d(0, 0, 0) rotate(0deg);                       opacity: 1; }
+  90%  {                                                                      opacity: 1; }
+  100% { transform: translate3d(0, 110vh, 0) rotate(var(--rot-end, 540deg)); opacity: 0; }
 }
 
 /* ==================== ERROR ==================== */

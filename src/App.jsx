@@ -778,7 +778,6 @@ function PartyUploadModal({ onClose, onSuccess, userName }) {
   const fileRef = useRef();
   const modalRef = useRef(null);
   const [files, setFiles] = useState([]);
-  const [previews, setPreviews] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadIndex, setUploadIndex] = useState(0);
   const [uploadTotal, setUploadTotal] = useState(0);
@@ -813,7 +812,6 @@ function PartyUploadModal({ onClose, onSuccess, userName }) {
     return () => {
       document.body.style.overflow = "";
       document.removeEventListener("keydown", handleKeyDown);
-      previews.forEach((url) => URL.revokeObjectURL(url));
       if (xhrRef.current) xhrRef.current.abort();
     };
   }, [uploading, onClose]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -831,19 +829,7 @@ function PartyUploadModal({ onClose, onSuccess, userName }) {
     } else {
       setError(null);
     }
-
-    // Clean up old previews
-    previews.forEach((url) => URL.revokeObjectURL(url));
-
-    const newPreviews = images.map((f) => URL.createObjectURL(f));
     setFiles(images);
-    setPreviews(newPreviews);
-  }
-
-  function removeFile(index) {
-    URL.revokeObjectURL(previews[index]);
-    setFiles((prev) => prev.filter((_, i) => i !== index));
-    setPreviews((prev) => prev.filter((_, i) => i !== index));
   }
 
   async function uploadAll() {
@@ -971,22 +957,8 @@ function PartyUploadModal({ onClose, onSuccess, userName }) {
               style={{ display: "none" }}
             />
 
-            {previews.length > 0 ? (
+            {files.length > 0 ? (
               <>
-                <div className="party-preview-grid">
-                  {previews.map((url, i) => (
-                    <div key={i} className="party-preview-item">
-                      <img src={url} alt={`Vorschau ${i + 1}`} className="party-preview-img" />
-                      <button
-                        className="party-preview-remove"
-                        onClick={() => removeFile(i)}
-                        aria-label={`Bild ${i + 1} entfernen`}
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
                 <p className="party-count">{files.length} Foto{files.length !== 1 ? "s" : ""} ausgewählt</p>
                 <button className="btn-full btn-primary" onClick={uploadAll}>
                   <Check size={18} /> {files.length} Foto{files.length !== 1 ? "s" : ""} hochladen

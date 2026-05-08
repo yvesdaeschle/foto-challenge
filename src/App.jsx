@@ -50,11 +50,24 @@ async function processImage(file) {
   const img = typeof createImageBitmap === "function"
     ? await createImageBitmap(file)
     : await loadImage(file);
-  const [original, thumb] = await Promise.all([
-    resizeToBlob(img, 3200, 0.92),
-    resizeToBlob(img, 250, 0.65),
-  ]);
-  return { original, thumb };
+  try {
+    const [original, thumb] = await Promise.all([
+      resizeToBlob(img, 3200, 0.92),
+      resizeToBlob(img, 250, 0.65),
+    ]);
+    return { original, thumb };
+  } finally {
+    if (typeof img.close === "function") img.close();
+  }
+}
+
+function generateIdempotencyKey() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 // ================================================================
@@ -202,7 +215,12 @@ function Celebration() {
 // ================================================================
 function Toast({ message, visible }) {
   return (
-    <div className={`toast ${visible ? "toast--show" : ""}`}>
+    <div
+      className={`toast ${visible ? "toast--show" : ""}`}
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    >
       <Check size={18} />
       {message}
     </div>
@@ -240,41 +258,19 @@ function ResetTitle({ onReset }) {
 // HOME PAGE
 // ================================================================
 function HomePage() {
-  const [done, setDone] = useState({});
+  const [done, setDone] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("progress") || "{}"); } catch { return {}; }
+  });
   const [active, setActive] = useState(null);
   const [toast, setToast] = useState(null);
   const [confettiKey, setConfettiKey] = useState(0);
-  const [userName, setUserName] = useState("");
-  const [nameConfirmed, setNameConfirmed] = useState(false);
+  const [userName, setUserName] = useState(() => localStorage.getItem("userName") || "");
+  const [nameConfirmed, setNameConfirmed] = useState(() => Boolean(localStorage.getItem("userName")));
   const confettiTimer = useRef(null);
   const toastTimer = useRef(null);
-  const hasLoaded = useRef(false);
-  const initialLoadDone = useRef(false);
 
   useEffect(() => {
-    const savedName = localStorage.getItem("userName");
-    if (savedName) {
-      setUserName(savedName);
-      setNameConfirmed(true);
-    }
-    const saved = localStorage.getItem("progress");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setDone(parsed);
-      } catch {
-        /* ignore corrupt data */
-      }
-    }
-    hasLoaded.current = true;
-    // Defer save-enable to next tick so the initial setState has rendered
-    requestAnimationFrame(() => { initialLoadDone.current = true; });
-  }, []);
-
-  useEffect(() => {
-    if (initialLoadDone.current) {
-      localStorage.setItem("progress", JSON.stringify(done));
-    }
+    localStorage.setItem("progress", JSON.stringify(done));
   }, [done]);
 
   const completed = Object.values(done).filter(Boolean).length;
@@ -293,12 +289,15 @@ function HomePage() {
   }, []);
 
   const handleUploadSuccess = useCallback(
-    (challengeId) => {
+    (challengeId, thumbDataUrl, idempotencyKey) => {
       // Haptic feedback on mobile
       if (navigator.vibrate) navigator.vibrate(50);
 
       setDone((d) => {
-        const next = { ...d, [challengeId]: true };
+        const next = {
+          ...d,
+          [challengeId]: { done: true, thumb: thumbDataUrl || null, idempotencyKey: idempotencyKey || null },
+        };
         // Trigger celebration only when all 5 challenges are done
         if (challenges.every((c) => next[c.id])) {
           if (confettiTimer.current) clearTimeout(confettiTimer.current);
@@ -412,7 +411,9 @@ function HomePage() {
       </div>
 
       {challenges.map((c, i) => {
-        const isDone = done[c.id];
+        const entry = done[c.id];
+        const isDone = Boolean(entry);
+        const thumbUrl = typeof entry === "object" && entry ? entry.thumb : null;
         return (
           <div
             key={c.id}
@@ -420,7 +421,11 @@ function HomePage() {
             style={{ animationDelay: `${0.15 + i * 0.07}s` }}
           >
             <div className="card-header">
-              <span className="card-emoji">{c.emoji}</span>
+              {thumbUrl ? (
+                <img src={thumbUrl} alt="" className="card-own-thumb" />
+              ) : (
+                <span className="card-emoji">{c.emoji}</span>
+              )}
               <h2>{c.title}</h2>
               {isDone && <span className="card-check">✓</span>}
             </div>
@@ -428,7 +433,7 @@ function HomePage() {
             <small>{c.detail}</small>
             <div className="actions">
               <button onClick={() => setActive(c)}>
-                <Camera size={18} /> Foto aufnehmen
+                <Camera size={18} /> {isDone ? "Foto ersetzen" : "Foto aufnehmen"}
               </button>
             </div>
           </div>
@@ -447,7 +452,15 @@ function HomePage() {
       )}
 
       {active && (
-        <UploadModal challenge={active} onClose={() => setActive(null)} onSuccess={handleUploadSuccess} userName={userName} />
+        <UploadModal
+          challenge={active}
+          onClose={() => setActive(null)}
+          onSuccess={handleUploadSuccess}
+          userName={userName}
+          existingIdempotencyKey={
+            (done[active.id] && typeof done[active.id] === "object" && done[active.id].idempotencyKey) || null
+          }
+        />
       )}
 
       <footer className="credit">Made with ♥ by Yves</footer>
@@ -458,14 +471,17 @@ function HomePage() {
 // ================================================================
 // UPLOAD MODAL
 // ================================================================
-function UploadModal({ challenge, onClose, onSuccess, userName }) {
+function UploadModal({ challenge, onClose, onSuccess, userName, existingIdempotencyKey }) {
   const cameraRef = useRef();
   const galleryRef = useRef();
   const [uploading, setUploading] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [preview, setPreview] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [error, setError] = useState(null);
+  const idempotencyKeyRef = useRef(existingIdempotencyKey || null);
+  const xhrRef = useRef(null);
 
   useEffect(() => {
     return () => {
@@ -477,6 +493,7 @@ function UploadModal({ challenge, onClose, onSuccess, userName }) {
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = "";
+      if (xhrRef.current) xhrRef.current.abort();
     };
   }, []);
 
@@ -488,12 +505,11 @@ function UploadModal({ challenge, onClose, onSuccess, userName }) {
     if (typeof createImageBitmap === "function") {
       createImageBitmap(file).then((bmp) => {
         const canvas = document.createElement("canvas");
-        canvas.width = bmp.width;
-        canvas.height = bmp.height;
         const scale = Math.min(1, 800 / Math.max(bmp.width, bmp.height));
         canvas.width = Math.round(bmp.width * scale);
         canvas.height = Math.round(bmp.height * scale);
         canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
+        if (typeof bmp.close === "function") bmp.close();
         canvas.toBlob((blob) => {
           if (blob) setPreview(URL.createObjectURL(blob));
           else setPreview(URL.createObjectURL(file));
@@ -521,6 +537,13 @@ function UploadModal({ challenge, onClose, onSuccess, userName }) {
 
     setUploading(true);
     setProcessing(true);
+    setUploadProgress(0);
+
+    // Stable idempotency key so retries overwrite the same R2 object
+    if (!idempotencyKeyRef.current) {
+      idempotencyKeyRef.current = generateIdempotencyKey();
+    }
+    const usedIdempotencyKey = idempotencyKeyRef.current;
 
     try {
       const { original, thumb } = await processImage(selectedFile);
@@ -531,15 +554,46 @@ function UploadModal({ challenge, onClose, onSuccess, userName }) {
       form.append("thumb", thumb, "thumb.jpg");
       form.append("challengeId", challenge.id);
       form.append("name", userName || "");
+      form.append("idempotencyKey", idempotencyKeyRef.current);
 
-      const res = await fetch(`${API_BASE}/upload`, { method: "POST", body: form });
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhrRef.current = xhr;
+        xhr.open("POST", `${API_BASE}/upload`);
+        xhr.upload.onprogress = (ev) => {
+          if (ev.lengthComputable) {
+            setUploadProgress(Math.round((ev.loaded / ev.total) * 100));
+          }
+        };
+        xhr.onload = () => {
+          xhrRef.current = null;
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            let msg = `Upload fehlgeschlagen (${xhr.status})`;
+            try { const data = JSON.parse(xhr.responseText); if (data.error) msg = data.error; } catch { /* ignore */ }
+            reject(new Error(msg));
+          }
+        };
+        xhr.onerror = () => { xhrRef.current = null; reject(new Error("Netzwerkfehler")); };
+        xhr.onabort = () => { xhrRef.current = null; reject(new Error("Abgebrochen")); };
+        xhr.send(form);
+      });
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Upload fehlgeschlagen (${res.status})`);
-      }
+      idempotencyKeyRef.current = null;
 
-      onSuccess(challenge.id);
+      // Convert thumb blob to data URL so we can show it on the card after upload
+      let thumbDataUrl = null;
+      try {
+        thumbDataUrl = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result);
+          r.onerror = () => rej(r.error);
+          r.readAsDataURL(thumb);
+        });
+      } catch { /* non-fatal */ }
+
+      onSuccess(challenge.id, thumbDataUrl, usedIdempotencyKey);
     } catch (err) {
       setError(err.message || "Upload fehlgeschlagen");
       setUploading(false);
@@ -593,8 +647,21 @@ function UploadModal({ challenge, onClose, onSuccess, userName }) {
             <img src={preview} alt="Vorschau" className="preview-img" />
             {uploading ? (
               <div className="uploading">
-                <Loader size={24} className="spin" />
-                <span>{processing ? "Bild wird vorbereitet…" : "Wird hochgeladen…"}</span>
+                {processing ? (
+                  <>
+                    <Loader size={24} className="spin" />
+                    <span>Bild wird vorbereitet…</span>
+                  </>
+                ) : (
+                  <div className="upload-progress">
+                    <div className="upload-progress-bar-wrap">
+                      <div className="upload-progress-bar" style={{ width: `${uploadProgress}%` }} />
+                    </div>
+                    <span className="upload-progress-label">
+                      {uploadProgress < 100 ? `Wird hochgeladen… ${uploadProgress}%` : "Wird gespeichert…"}
+                    </span>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="preview-actions">
@@ -689,6 +756,8 @@ function AdminPage() {
   const [viewer, setViewer] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [deleting, setDeleting] = useState(null);
+  const [confirmState, setConfirmState] = useState(null); // { kind: 'one' | 'all', photo? }
+  const [confirmInput, setConfirmInput] = useState("");
 
   async function login() {
     if (!token.trim()) {
@@ -752,7 +821,6 @@ function AdminPage() {
 
   async function deletePhoto(photo) {
     if (deleting) return;
-    if (!window.confirm(`"${photo.name || photo.key.split("/").pop()}" wirklich löschen?`)) return;
     setDeleting(photo.key);
     try {
       const res = await fetch(`${API_BASE}/photo/${encodeURIComponent(photo.key)}`, {
@@ -770,6 +838,24 @@ function AdminPage() {
 
   function closeViewer() {
     setViewer(null);
+  }
+
+  async function deleteAll() {
+    if (deleting) return;
+    setDeleting("all");
+    try {
+      const res = await fetch(`${API_BASE}/photos`, {
+        method: "DELETE",
+        headers: { "x-admin-token": token },
+      });
+      if (!res.ok) throw new Error("Delete failed");
+      setPhotos([]);
+    } catch {
+      setError("Löschen fehlgeschlagen.");
+      refreshPhotos();
+    } finally {
+      setDeleting(null);
+    }
   }
 
   // Group photos by challenge
@@ -827,6 +913,15 @@ function AdminPage() {
         <div className="admin-top-actions">
           <button
             className="btn-icon-label"
+            onClick={() => { setConfirmInput(""); setConfirmState({ kind: "all" }); }}
+            disabled={deleting || photos.length === 0}
+            title="Alle löschen"
+            style={{ color: "#e74c3c" }}
+          >
+            <Trash2 size={18} />
+          </button>
+          <button
+            className="btn-icon-label"
             onClick={refreshPhotos}
             disabled={refreshing}
             title="Aktualisieren"
@@ -874,7 +969,7 @@ function AdminPage() {
                   </button>
                   <button
                     className="btn-icon gallery-delete"
-                    onClick={() => deletePhoto(photo)}
+                    onClick={() => setConfirmState({ kind: "one", photo })}
                     disabled={deleting === photo.key}
                     aria-label="Löschen"
                     title="Foto löschen"
@@ -896,6 +991,81 @@ function AdminPage() {
 
       {/* Fullscreen Viewer */}
       {viewer && <ImageViewer viewer={viewer} onClose={closeViewer} />}
+
+      {confirmState && (
+        <ConfirmDialog
+          title={confirmState.kind === "all" ? "Alle Fotos löschen?" : "Foto löschen?"}
+          message={
+            confirmState.kind === "all"
+              ? `Du bist im Begriff, ${photos.length} Fotos unwiderruflich zu löschen.`
+              : `"${(confirmState.photo.name || confirmState.photo.key.split("/").pop())}" wird unwiderruflich gelöscht.`
+          }
+          confirmText={confirmState.kind === "all" ? "LÖSCHEN" : null}
+          confirmInput={confirmInput}
+          onConfirmInput={setConfirmInput}
+          onCancel={() => { setConfirmState(null); setConfirmInput(""); }}
+          onConfirm={() => {
+            const action = confirmState.kind === "all" ? deleteAll : () => deletePhoto(confirmState.photo);
+            setConfirmState(null);
+            setConfirmInput("");
+            action();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ================================================================
+// CONFIRM DIALOG — Styled in-app confirmation (replaces window.confirm)
+// ================================================================
+function ConfirmDialog({ title, message, confirmText, confirmInput, onConfirmInput, onCancel, onConfirm }) {
+  const requiresTyping = Boolean(confirmText);
+  const canConfirm = !requiresTyping || confirmInput === confirmText;
+
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === "Escape") onCancel();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  return (
+    <div className="modal" onClick={onCancel} role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <div className="modal-box slide-up confirm-box" onClick={(e) => e.stopPropagation()}>
+        <h3 id="confirm-title" className="confirm-title">{title}</h3>
+        <p className="confirm-message">{message}</p>
+
+        {requiresTyping && (
+          <>
+            <label htmlFor="confirm-input" className="confirm-label">
+              Tippe <strong>{confirmText}</strong>, um zu bestätigen:
+            </label>
+            <input
+              id="confirm-input"
+              type="text"
+              className="name-input"
+              value={confirmInput}
+              onChange={(e) => onConfirmInput(e.target.value)}
+              autoFocus
+              autoComplete="off"
+              autoCapitalize="characters"
+            />
+          </>
+        )}
+
+        <button
+          className="btn-full btn-danger"
+          onClick={onConfirm}
+          disabled={!canConfirm}
+        >
+          <Trash2 size={18} /> Löschen
+        </button>
+        <button className="btn-full btn-cancel" onClick={onCancel}>
+          Abbrechen
+        </button>
+      </div>
     </div>
   );
 }

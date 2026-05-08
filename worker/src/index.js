@@ -53,6 +53,11 @@ export default {
         return withCors(await handleGetPhoto(request, env, key), request, env);
       }
 
+      // DELETE /photos — delete all photos in one call
+      if (request.method === "DELETE" && url.pathname === "/photos") {
+        return withCors(await handleDeleteAllPhotos(request, env), request, env);
+      }
+
       // DELETE /photo/[KEY] — delete both original + thumb
       if (request.method === "DELETE" && url.pathname.startsWith("/photo/")) {
         const key = decodeURIComponent(url.pathname.slice("/photo/".length));
@@ -88,6 +93,7 @@ async function handleUpload(request, env) {
   const challengeTitle = sanitizeText(formData.get("challengeTitle"), 120);
   const name = sanitizeText(formData.get("name"), 80);
   const message = sanitizeText(formData.get("message"), 240);
+  const idempotencyKey = sanitizeKeyToken(formData.get("idempotencyKey"));
 
   if (!allowedChallenges.has(challengeId)) {
     return Response.json({ error: "Ungültige Challenge." }, { status: 400, headers: jsonHeaders });
@@ -109,9 +115,12 @@ async function handleUpload(request, env) {
   }
 
   const extension = "jpg";
-  const safeName = randomId();
+  const safeName = idempotencyKey || randomId();
   const nameSlug = name ? name.replace(/[^a-zA-Z0-9äöüÄÖÜß-]/g, "_").slice(0, 30) : "anon";
-  const key = `${challengeId}/${nameSlug}-${Date.now()}-${safeName}.${extension}`;
+  // When idempotencyKey is provided, key is deterministic so retries overwrite the same object
+  const key = idempotencyKey
+    ? `${challengeId}/${nameSlug}-${safeName}.${extension}`
+    : `${challengeId}/${nameSlug}-${Date.now()}-${safeName}.${extension}`;
 
   const now = new Date();
   const metadata = {
@@ -259,6 +268,35 @@ async function handleDeletePhoto(request, env, key) {
   ]);
 
   return Response.json({ ok: true }, { headers: jsonHeaders });
+}
+
+async function handleDeleteAllPhotos(request, env) {
+  const authResponse = requireAdmin(request, env);
+  if (authResponse) return authResponse;
+
+  async function listAllKeys(prefix) {
+    const keys = [];
+    let cursor;
+    do {
+      const listed = await env.PHOTOS_BUCKET.list({ prefix, limit: 1000, cursor });
+      for (const obj of listed.objects || []) keys.push(obj.key);
+      cursor = listed.truncated ? listed.cursor : undefined;
+    } while (cursor);
+    return keys;
+  }
+
+  const [originals, thumbs] = await Promise.all([
+    listAllKeys("original/"),
+    listAllKeys("thumbs/")
+  ]);
+  const allKeys = [...originals, ...thumbs];
+
+  // R2 bulk delete accepts up to 1000 keys per call
+  for (let i = 0; i < allKeys.length; i += 1000) {
+    await env.PHOTOS_BUCKET.delete(allKeys.slice(i, i + 1000));
+  }
+
+  return Response.json({ ok: true, deleted: allKeys.length }, { headers: jsonHeaders });
 }
 
 // ================================================================
@@ -499,6 +537,11 @@ function sanitizeText(value, maxLength) {
     .replace(/[<>]/g, "")
     .trim()
     .slice(0, maxLength);
+}
+
+function sanitizeKeyToken(value) {
+  // Only allow [a-z0-9-] up to 64 chars (UUID is 36)
+  return String(value || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 64);
 }
 
 function randomId() {

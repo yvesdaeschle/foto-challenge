@@ -68,6 +68,41 @@ beforeEach(() => {
 
   // Mock window.confirm for delete confirmation
   global.confirm = vi.fn(() => true);
+
+  // Mock XMLHttpRequest for upload progress
+  class MockXHR {
+    constructor() {
+      this.upload = {};
+      this.status = 0;
+      this.responseText = "";
+      MockXHR.lastInstance = this;
+      MockXHR.instances.push(this);
+    }
+    open(method, url) { this.method = method; this.url = url; }
+    send(body) {
+      this.body = body;
+      // Auto-succeed unless test sets MockXHR.nextResponse
+      queueMicrotask(() => {
+        const r = MockXHR.nextResponse || { status: 200, body: '{"ok":true}' };
+        MockXHR.nextResponse = null;
+        this.status = r.status;
+        this.responseText = r.body;
+        if (this.upload.onprogress) this.upload.onprogress({ lengthComputable: true, loaded: 100, total: 100 });
+        if (this.onload) this.onload();
+      });
+    }
+    abort() { if (this.onabort) this.onabort(); }
+  }
+  MockXHR.instances = [];
+  MockXHR.nextResponse = null;
+  MockXHR.lastInstance = null;
+  global.XMLHttpRequest = MockXHR;
+  global.MockXHR = MockXHR;
+
+  // Mock crypto.randomUUID for idempotency keys
+  if (!global.crypto) global.crypto = {};
+  global.crypto.randomUUID = () => "00000000-0000-4000-8000-000000000000";
+  global.crypto.getRandomValues = (arr) => { for (let i = 0; i < arr.length; i++) arr[i] = i; return arr; };
 });
 
 // ==================== ROUTING ====================
@@ -236,11 +271,7 @@ describe("UploadModal", () => {
   });
 
   it("shows error when upload fails", async () => {
-    global.fetch.mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      json: () => Promise.resolve({ error: "Server error" }),
-    });
+    global.MockXHR.nextResponse = { status: 500, body: JSON.stringify({ error: "Server error" }) };
 
     localStorage.setItem("userName", "TestUser");
     render(<App />);
@@ -264,9 +295,7 @@ describe("UploadModal", () => {
     });
   });
 
-  it("calls fetch with correct form data on upload", async () => {
-    global.fetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true }) });
-
+  it("calls upload with correct form data", async () => {
     localStorage.setItem("userName", "TestUser");
     render(<App />);
     fireEvent.click(screen.getAllByText("Foto aufnehmen")[0]);
@@ -283,10 +312,11 @@ describe("UploadModal", () => {
     fireEvent.click(screen.getByText("Foto hochladen"));
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining("/upload"),
-        expect.objectContaining({ method: "POST" })
-      );
+      const xhr = global.MockXHR.lastInstance;
+      expect(xhr).not.toBeNull();
+      expect(xhr.method).toBe("POST");
+      expect(xhr.url).toContain("/upload");
+      expect(xhr.body).toBeInstanceOf(FormData);
     });
   });
 

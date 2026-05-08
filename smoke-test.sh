@@ -1,214 +1,252 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # =============================================================
-# Smoke Test für den Foto-Challenge Worker (Production)
-# Testet alle Endpoints gegen die live URL
+# Smoke test for the Foto-Challenge worker.
+# Usage:
+#   ADMIN_TOKEN=xxx ./smoke-test.sh
+#   WORKER_URL=https://staging.example.workers.dev ADMIN_TOKEN=xxx ./smoke-test.sh
 # =============================================================
-set +e
+set -uo pipefail
 
-WORKER_URL="https://white-unit-000b.sevyelsch.workers.dev"
-ORIGIN="https://foto-challenge.pages.dev"
+WORKER_URL="${WORKER_URL:-https://white-unit-000b.sevyelsch.workers.dev}"
+ORIGIN="${ORIGIN:-https://foto-challenge.pages.dev}"
+SITE_URL="${SITE_URL:-$ORIGIN}"
 ADMIN_TOKEN="${ADMIN_TOKEN:-}"
-PASSED=0
-FAILED=0
-TOTAL=0
 
-if [ -z "$ADMIN_TOKEN" ]; then
-  echo "⚠️  Set ADMIN_TOKEN env var to test admin endpoints (delete, zip)"
-  echo "   Usage: ADMIN_TOKEN=xxx ./smoke-test.sh"
-  echo ""
+# ---- pretty output -----------------------------------------
+if [ -t 1 ]; then
+  R=$'\e[31m'; G=$'\e[32m'; Y=$'\e[33m'; B=$'\e[34m'; D=$'\e[2m'; N=$'\e[0m'
+else
+  R=""; G=""; Y=""; B=""; D=""; N=""
 fi
 
-pass() { PASSED=$((PASSED+1)); TOTAL=$((TOTAL+1)); echo "  ✅ $1"; }
-fail() { FAILED=$((FAILED+1)); TOTAL=$((TOTAL+1)); echo "  ❌ $1: $2"; }
+PASS=0; FAIL=0; TOTAL=0
+pass() { PASS=$((PASS+1)); TOTAL=$((TOTAL+1)); printf "  ${G}✓${N} %s\n" "$1"; }
+fail() { FAIL=$((FAIL+1)); TOTAL=$((TOTAL+1)); printf "  ${R}✗${N} %s ${D}— %s${N}\n" "$1" "$2"; }
+section() { printf "\n${B}%s${N}\n" "$1"; }
 
-check() {
-  if [ "$1" = "$2" ]; then
-    pass "$3"
-  else
-    fail "$3" "$4"
-  fi
-}
+# ---- prerequisites -----------------------------------------
+for cmd in curl jq python3 unzip; do
+  command -v "$cmd" >/dev/null 2>&1 || { echo "${R}Missing required command: $cmd${N}"; exit 2; }
+done
 
-echo "🔍 Smoke-Testing Worker: $WORKER_URL"
-echo ""
+# ---- temp + cleanup ----------------------------------------
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
 
-# -----------------------------------------------------------
-# 1. CORS preflight
-# -----------------------------------------------------------
-echo "1️⃣  CORS OPTIONS /upload"
-STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X OPTIONS \
+CURL_OPTS=(-sS --connect-timeout 10 --max-time 60)
+
+# ---- generate two distinguishable 1×1 JPEGs ----------------
+JPEG="$TMP/test.jpg"
+JPEG2="$TMP/test2.jpg"
+TMP_DIR="$TMP" python3 - <<'PY'
+import os
+TMP = os.environ["TMP_DIR"]
+HDR = bytes.fromhex(
+  "ffd8ffe000104a46494600010100000100010000ffdb004300080606070605080707"
+  "07090908090c14150c10110b0b13280f111c1f242b2a26242a2c1f23252b3338342f"
+  "302927ffc0000b08000100010101110000ffc4001f0000010501010101010100000000"
+  "00000000010203040506070809ffc400b5100002010303020403050504040000017d"
+  "01020300041105122131410613516107227114328191a1082342b1c11552d1f02433"
+  "627282090a161718191a25262728292a3435363738393a434445464748494a535455"
+  "565758595a636465666768696a737475767778797a838485868788898a9293949596"
+  "9798999aa2a3a4a5a6a7a8a9aab2b3b4b5b6b7b8b9bac2c3c4c5c6c7c8c9cad2d3d4"
+  "d5d6d7d8d9dae1e2e3e4e5e6e7e8e9eaf1f2f3f4f5f6f7f8f9faffda00080101003f"
+  "00")
+img1 = HDR + bytes.fromhex("7b941100ffd9")
+# img2 has ~64 bytes of padding before EOI so its size clearly differs
+img2 = HDR + bytes.fromhex("7b941100") + (b"\xaa" * 64) + bytes.fromhex("ffd9")
+open(os.path.join(TMP, "test.jpg"),  "wb").write(img1)
+open(os.path.join(TMP, "test2.jpg"), "wb").write(img2)
+PY
+
+if [ ! -s "$JPEG" ] || [ ! -s "$JPEG2" ]; then
+  echo "${R}Failed to create test JPEGs${N}"; exit 2
+fi
+SIZE1=$(wc -c < "$JPEG"  | tr -d ' ')
+SIZE2=$(wc -c < "$JPEG2" | tr -d ' ')
+
+if [ -z "$ADMIN_TOKEN" ]; then
+  printf "${Y}⚠  ADMIN_TOKEN not set — admin-only checks will be skipped${N}\n"
+fi
+
+printf "${B}Target: ${N}%s   ${B}Origin: ${N}%s\n" "$WORKER_URL" "$ORIGIN"
+
+# ============================================================
+section "1. CORS"
+# ============================================================
+HDRS=$(curl "${CURL_OPTS[@]}" -i -X OPTIONS \
   -H "Origin: $ORIGIN" \
   -H "Access-Control-Request-Method: POST" \
   "$WORKER_URL/upload")
-[ "$STATUS" = "204" ] && pass "OPTIONS → 204" || fail "OPTIONS" "got $STATUS"
+STATUS=$(printf '%s' "$HDRS" | head -1 | awk '{print $2}')
+[ "$STATUS" = "204" ] && pass "OPTIONS /upload → 204" || fail "OPTIONS /upload" "got $STATUS"
 
-# -----------------------------------------------------------
-# 2. GET /photos (should return JSON array)
-# -----------------------------------------------------------
-echo "2️⃣  GET /photos"
-RESP=$(curl -s -H "Origin: $ORIGIN" -H "x-admin-token: $ADMIN_TOKEN" "$WORKER_URL/photos")
-echo "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); assert isinstance(d.get('photos'),list)" 2>/dev/null \
-  && pass "Returns JSON array (${#RESP} bytes)" \
-  || fail "/photos" "not a JSON array"
+ALLOW=$(printf '%s' "$HDRS" | grep -i '^access-control-allow-origin:' | tr -d '\r' | awk -F': ' '{print $2}')
+[ -n "$ALLOW" ] && pass "Allow-Origin header present ($ALLOW)" || fail "Allow-Origin" "missing"
 
-# -----------------------------------------------------------
-# 3. POST /upload — invalid (no file)
-# -----------------------------------------------------------
-echo "3️⃣  POST /upload (no file → should fail)"
-STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+# ============================================================
+section "2. Auth"
+# ============================================================
+STATUS=$(curl "${CURL_OPTS[@]}" -o /dev/null -w "%{http_code}" \
+  -H "Origin: $ORIGIN" "$WORKER_URL/photos")
+[ "$STATUS" = "401" ] && pass "GET /photos no token → 401" || fail "/photos no auth" "got $STATUS"
+
+STATUS=$(curl "${CURL_OPTS[@]}" -o /dev/null -w "%{http_code}" \
+  -H "Origin: $ORIGIN" -H "x-admin-token: definitely-wrong" "$WORKER_URL/photos")
+[ "$STATUS" = "401" ] && pass "GET /photos bad token → 401" || fail "/photos bad token" "got $STATUS"
+
+STATUS=$(curl "${CURL_OPTS[@]}" -o /dev/null -w "%{http_code}" \
+  -H "Origin: $ORIGIN" -H "x-admin-token: x" "$WORKER_URL/photo/full/..%2Fetc%2Fpasswd")
+case "$STATUS" in 400|401) pass "Path traversal blocked → $STATUS" ;; *) fail "traversal" "got $STATUS" ;; esac
+
+# ============================================================
+section "3. Upload validation"
+# ============================================================
+STATUS=$(curl "${CURL_OPTS[@]}" -o /dev/null -w "%{http_code}" -X POST \
+  -H "Origin: $ORIGIN" "$WORKER_URL/upload")
+[ "$STATUS" = "400" ] && pass "POST /upload no body → 400" || fail "no-body upload" "got $STATUS"
+
+STATUS=$(curl "${CURL_OPTS[@]}" -o /dev/null -w "%{http_code}" -X POST \
   -H "Origin: $ORIGIN" \
-  "$WORKER_URL/upload")
-[ "$STATUS" = "400" ] && pass "No file → 400" || fail "Upload no-file" "got $STATUS"
-
-# -----------------------------------------------------------
-# 4. POST /upload — invalid challenge
-# -----------------------------------------------------------
-echo "4️⃣  POST /upload (bad challenge → should fail)"
-# Create a tiny test image
-echo -n "fakeimage" > /tmp/smoketest.jpg
-STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-  -H "Origin: $ORIGIN" \
-  -F "photo=@/tmp/smoketest.jpg;type=image/jpeg" \
+  -F "photo=@$JPEG;type=image/jpeg" \
   -F "challengeId=99-invalid" \
   -F "name=SmokeTest" \
   "$WORKER_URL/upload")
-[ "$STATUS" = "400" ] && pass "Bad challenge → 400" || fail "Bad challenge" "got $STATUS"
+[ "$STATUS" = "400" ] && pass "Bad challengeId → 400" || fail "bad challenge" "got $STATUS"
 
-# -----------------------------------------------------------
-# 5. POST /upload — valid upload
-# -----------------------------------------------------------
-echo "5️⃣  POST /upload (valid)"
-# Create a real tiny JPEG (1x1 pixel)
-python3 -c "
-import struct, sys
-# Minimal JPEG: SOI + APP0 + DQT + SOF0 + DHT + SOS + EOI
-sys.stdout.buffer.write(bytes([
-  0xFF,0xD8,0xFF,0xE0,0x00,0x10,0x4A,0x46,0x49,0x46,0x00,0x01,
-  0x01,0x00,0x00,0x01,0x00,0x01,0x00,0x00,0xFF,0xDB,0x00,0x43,
-  0x00,0x08,0x06,0x06,0x07,0x06,0x05,0x08,0x07,0x07,0x07,0x09,
-  0x09,0x08,0x0A,0x0C,0x14,0x0D,0x0C,0x0B,0x0B,0x0C,0x19,0x12,
-  0x13,0x0F,0x14,0x1D,0x1A,0x1F,0x1E,0x1D,0x1A,0x1C,0x1C,0x20,
-  0x24,0x2E,0x27,0x20,0x22,0x2C,0x23,0x1C,0x1C,0x28,0x37,0x29,
-  0x2C,0x30,0x31,0x34,0x34,0x34,0x1F,0x27,0x39,0x3D,0x38,0x32,
-  0x3C,0x2E,0x33,0x34,0x32,0xFF,0xC0,0x00,0x0B,0x08,0x00,0x01,
-  0x00,0x01,0x01,0x01,0x11,0x00,0xFF,0xC4,0x00,0x1F,0x00,0x00,
-  0x01,0x05,0x01,0x01,0x01,0x01,0x01,0x01,0x00,0x00,0x00,0x00,
-  0x00,0x00,0x00,0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,
-  0x09,0x0A,0x0B,0xFF,0xC4,0x00,0xB5,0x10,0x00,0x02,0x01,0x03,
-  0x03,0x02,0x04,0x03,0x05,0x05,0x04,0x04,0x00,0x00,0x01,0x7D,
-  0x01,0x02,0x03,0x00,0x04,0x11,0x05,0x12,0x21,0x31,0x41,0x06,
-  0x13,0x51,0x61,0x07,0x22,0x71,0x14,0x32,0x81,0x91,0xA1,0x08,
-  0x23,0x42,0xB1,0xC1,0x15,0x52,0xD1,0xF0,0x24,0x33,0x62,0x72,
-  0x82,0x09,0x0A,0x16,0x17,0x18,0x19,0x1A,0x25,0x26,0x27,0x28,
-  0x29,0x2A,0x34,0x35,0x36,0x37,0x38,0x39,0x3A,0x43,0x44,0x45,
-  0x46,0x47,0x48,0x49,0x4A,0x53,0x54,0x55,0x56,0x57,0x58,0x59,
-  0x5A,0x63,0x64,0x65,0x66,0x67,0x68,0x69,0x6A,0x73,0x74,0x75,
-  0x76,0x77,0x78,0x79,0x7A,0x83,0x84,0x85,0x86,0x87,0x88,0x89,
-  0x8A,0x92,0x93,0x94,0x95,0x96,0x97,0x98,0x99,0x9A,0xA2,0xA3,
-  0xA4,0xA5,0xA6,0xA7,0xA8,0xA9,0xAA,0xB2,0xB3,0xB4,0xB5,0xB6,
-  0xB7,0xB8,0xB9,0xBA,0xC2,0xC3,0xC4,0xC5,0xC6,0xC7,0xC8,0xC9,
-  0xCA,0xD2,0xD3,0xD4,0xD5,0xD6,0xD7,0xD8,0xD9,0xDA,0xE1,0xE2,
-  0xE3,0xE4,0xE5,0xE6,0xE7,0xE8,0xE9,0xEA,0xF1,0xF2,0xF3,0xF4,
-  0xF5,0xF6,0xF7,0xF8,0xF9,0xFA,0xFF,0xDA,0x00,0x08,0x01,0x01,
-  0x00,0x00,0x3F,0x00,0x7B,0x94,0x11,0x00,0x00,0x00,0xFF,0xD9
-]))
-" > /tmp/smoketest-real.jpg
-
-UPLOAD_RESP=$(curl -s -w "\n%{http_code}" -X POST \
-  -H "Origin: $ORIGIN" \
-  -F "photo=@/tmp/smoketest-real.jpg;type=image/jpeg" \
-  -F "thumb=@/tmp/smoketest-real.jpg;type=image/jpeg" \
-  -F "challengeId=01-new-faces" \
-  -F "challengeTitle=New Faces" \
-  -F "name=SmokeTest" \
-  -F "message=Automated test" \
-  "$WORKER_URL/upload")
-UPLOAD_STATUS=$(echo "$UPLOAD_RESP" | tail -1)
-UPLOAD_BODY=$(echo "$UPLOAD_RESP" | sed '$d')
-UPLOAD_KEY=$(echo "$UPLOAD_BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('key',''))" 2>/dev/null || echo "")
-[ "$UPLOAD_STATUS" = "200" ] && pass "Upload → 200 (key: $UPLOAD_KEY)" || fail "Upload" "got $UPLOAD_STATUS: $UPLOAD_BODY"
-
-# -----------------------------------------------------------
-# 6. GET /photo/thumb/KEY
-# -----------------------------------------------------------
-if [ -n "$UPLOAD_KEY" ]; then
-  echo "6️⃣  GET /photo/thumb/$UPLOAD_KEY"
-  THUMB_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+# ============================================================
+section "4. Upload + idempotency"
+# ============================================================
+IDEM="smoketest-$(date +%s)-$RANDOM"
+upload_with_idem() {
+  local idem="$1"
+  local file="${2:-$JPEG}"
+  curl "${CURL_OPTS[@]}" -X POST \
     -H "Origin: $ORIGIN" \
-    -H "x-admin-token: $ADMIN_TOKEN" \
-    "$WORKER_URL/photo/thumb/$UPLOAD_KEY")
-  [ "$THUMB_STATUS" = "200" ] && pass "Thumb → 200" || fail "Thumb" "got $THUMB_STATUS"
+    -F "photo=@$file;type=image/jpeg" \
+    -F "thumb=@$file;type=image/jpeg" \
+    -F "challengeId=01-new-faces" \
+    -F "challengeTitle=New Faces" \
+    -F "name=SmokeTest" \
+    -F "message=Automated test" \
+    -F "idempotencyKey=$idem" \
+    "$WORKER_URL/upload"
+}
 
-  echo "7️⃣  GET /photo/full/$UPLOAD_KEY"
-  FULL_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-    -H "Origin: $ORIGIN" \
-    -H "x-admin-token: $ADMIN_TOKEN" \
-    "$WORKER_URL/photo/full/$UPLOAD_KEY")
-  [ "$FULL_STATUS" = "200" ] && pass "Full → 200" || fail "Full" "got $FULL_STATUS"
+RESP=$(upload_with_idem "$IDEM" "$JPEG")
+KEY=$(printf '%s' "$RESP" | jq -r '.key // ""')
+OK=$(printf '%s' "$RESP" | jq -r '.ok // false')
+[ "$OK" = "true" ] && [ -n "$KEY" ] && pass "Upload #1 → ok (key: $KEY)" || fail "upload #1" "$RESP"
+
+RESP=$(upload_with_idem "$IDEM" "$JPEG")
+KEY2=$(printf '%s' "$RESP" | jq -r '.key // ""')
+[ "$KEY" = "$KEY2" ] && pass "Idempotent upload reuses same key" || fail "idempotency" "key changed: $KEY2"
+
+# Replace: upload a different file under the same idempotency key.
+# Same R2 key should be returned, and downloading should yield the new bytes.
+RESP=$(upload_with_idem "$IDEM" "$JPEG2")
+KEY3=$(printf '%s' "$RESP" | jq -r '.key // ""')
+[ "$KEY" = "$KEY3" ] && pass "Replace upload reuses same key" || fail "replace key" "key changed: $KEY3"
+
+if [ -n "$ADMIN_TOKEN" ] && [ -n "$KEY" ]; then
+  curl "${CURL_OPTS[@]}" -o "$TMP/replaced.jpg" \
+    -H "Origin: $ORIGIN" -H "x-admin-token: $ADMIN_TOKEN" \
+    "$WORKER_URL/photo/full/$KEY" >/dev/null
+  GOT_SIZE=$(wc -c < "$TMP/replaced.jpg" | tr -d ' ')
+  if [ "$GOT_SIZE" = "$SIZE2" ]; then
+    pass "Replace overwrote object (size ${GOT_SIZE}B = file2 ${SIZE2}B, file1 was ${SIZE1}B)"
+  else
+    fail "replace bytes" "downloaded ${GOT_SIZE}B, expected ${SIZE2}B (file1 was ${SIZE1}B)"
+  fi
 fi
 
-# -----------------------------------------------------------
-# 8. GET /photos — verify uploaded photo appears
-# -----------------------------------------------------------
-echo "8️⃣  GET /photos — check SmokeTest photo in list"
-PHOTOS=$(curl -s -H "Origin: $ORIGIN" -H "x-admin-token: $ADMIN_TOKEN" "$WORKER_URL/photos")
-echo "$PHOTOS" | grep -q "SmokeTest" \
-  && pass "SmokeTest photo in list" \
-  || fail "List" "SmokeTest not found"
+# ============================================================
+section "5. Read photo + thumb"
+# ============================================================
+if [ -n "$ADMIN_TOKEN" ] && [ -n "$KEY" ]; then
+  HDRS=$(curl "${CURL_OPTS[@]}" -D - -o "$TMP/thumb.jpg" \
+    -H "Origin: $ORIGIN" -H "x-admin-token: $ADMIN_TOKEN" \
+    "$WORKER_URL/photo/thumb/$KEY")
+  STATUS=$(printf '%s' "$HDRS" | head -1 | awk '{print $2}')
+  CT=$(printf '%s' "$HDRS" | grep -i '^content-type:' | tr -d '\r' | awk -F': ' '{print $2}' | head -1)
+  SIZE=$(wc -c < "$TMP/thumb.jpg" | tr -d ' ')
+  [ "$STATUS" = "200" ] && [[ "$CT" == image/* ]] && [ "$SIZE" -gt 0 ] \
+    && pass "Thumb → 200 ($CT, ${SIZE}B)" \
+    || fail "thumb" "status=$STATUS ct=$CT size=$SIZE"
 
-# -----------------------------------------------------------
-# 9. GET /download/zip (needs admin token)
-# -----------------------------------------------------------
-echo "9️⃣  GET /download/zip (no token → should fail)"
-ZIP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-  -H "Origin: $ORIGIN" \
-  "$WORKER_URL/download/zip?challenge=01-new-faces")
-[ "$ZIP_STATUS" = "401" ] && pass "ZIP without token → 401" || fail "ZIP no-auth" "got $ZIP_STATUS"
+  STATUS=$(curl "${CURL_OPTS[@]}" -o "$TMP/full.jpg" -w "%{http_code}" \
+    -H "Origin: $ORIGIN" -H "x-admin-token: $ADMIN_TOKEN" \
+    "$WORKER_URL/photo/full/$KEY")
+  [ "$STATUS" = "200" ] && [ -s "$TMP/full.jpg" ] && pass "Full → 200" || fail "full" "got $STATUS"
+
+  RESP=$(curl "${CURL_OPTS[@]}" -H "Origin: $ORIGIN" -H "x-admin-token: $ADMIN_TOKEN" "$WORKER_URL/photos")
+  COUNT=$(printf '%s' "$RESP" | jq '[.photos[] | select(.key == "'"$KEY"'")] | length')
+  [ "$COUNT" = "1" ] && pass "Listed in /photos exactly once" || fail "list" "count=$COUNT"
+fi
+
+# ============================================================
+section "6. ZIP download"
+# ============================================================
+STATUS=$(curl "${CURL_OPTS[@]}" -o /dev/null -w "%{http_code}" \
+  -H "Origin: $ORIGIN" "$WORKER_URL/download/zip?challenge=01-new-faces")
+[ "$STATUS" = "401" ] && pass "ZIP no token → 401" || fail "ZIP no auth" "got $STATUS"
 
 if [ -n "$ADMIN_TOKEN" ]; then
-  echo "9️⃣b GET /download/zip (with token → should work)"
-  ZIP_OK=$(curl -s -o /dev/null -w "%{http_code}" \
+  STATUS=$(curl "${CURL_OPTS[@]}" -o "$TMP/photos.zip" -w "%{http_code}" \
     -H "Origin: $ORIGIN" \
     "$WORKER_URL/download/zip?challenge=01-new-faces&token=$ADMIN_TOKEN")
-  [ "$ZIP_OK" = "200" ] && pass "ZIP with token → 200" || fail "ZIP auth" "got $ZIP_OK"
+  if [ "$STATUS" = "200" ]; then
+    if unzip -tq "$TMP/photos.zip" >/dev/null 2>&1; then
+      ENTRIES=$(unzip -l "$TMP/photos.zip" | tail -1 | awk '{print $2}')
+      pass "ZIP downloads + integrity OK ($ENTRIES entries)"
+    else
+      fail "ZIP integrity" "unzip -t failed"
+    fi
+  else
+    fail "ZIP" "got $STATUS"
+  fi
 fi
 
-# -----------------------------------------------------------
-# 10. DELETE /photo/KEY — cleanup test photo
-# -----------------------------------------------------------
-if [ -n "$UPLOAD_KEY" ] && [ -n "$ADMIN_TOKEN" ]; then
-  echo "🔟  DELETE /photo/$UPLOAD_KEY"
-  DEL_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
-    -H "Origin: $ORIGIN" \
-    -H "x-admin-token: $ADMIN_TOKEN" \
-    "$WORKER_URL/photo/$UPLOAD_KEY")
-  [ "$DEL_STATUS" = "200" ] && pass "Delete → 200" || fail "Delete" "got $DEL_STATUS"
+# ============================================================
+section "7. Delete"
+# ============================================================
+if [ -n "$ADMIN_TOKEN" ] && [ -n "$KEY" ]; then
+  STATUS=$(curl "${CURL_OPTS[@]}" -o /dev/null -w "%{http_code}" -X DELETE \
+    -H "Origin: $ORIGIN" -H "x-admin-token: $ADMIN_TOKEN" \
+    "$WORKER_URL/photo/$KEY")
+  [ "$STATUS" = "200" ] && pass "DELETE /photo/KEY → 200" || fail "delete" "got $STATUS"
 
-  # Verify it's gone
-  echo "1️⃣1️⃣ Verify deleted"
-  GONE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-    -H "Origin: $ORIGIN" \
-    -H "x-admin-token: $ADMIN_TOKEN" \
-    "$WORKER_URL/photo/full/$UPLOAD_KEY")
-  [ "$GONE_STATUS" = "404" ] && pass "Deleted photo → 404" || fail "Verify delete" "got $GONE_STATUS"
+  STATUS=$(curl "${CURL_OPTS[@]}" -o /dev/null -w "%{http_code}" \
+    -H "Origin: $ORIGIN" -H "x-admin-token: $ADMIN_TOKEN" \
+    "$WORKER_URL/photo/full/$KEY")
+  [ "$STATUS" = "404" ] && pass "Deleted photo gone → 404" || fail "verify-delete" "got $STATUS"
+
+  # delete-all (no remaining test photos expected, but endpoint must answer 200)
+  STATUS=$(curl "${CURL_OPTS[@]}" -o /dev/null -w "%{http_code}" -X DELETE \
+    -H "Origin: $ORIGIN" "$WORKER_URL/photos")
+  [ "$STATUS" = "401" ] && pass "DELETE /photos no token → 401" || fail "delete-all auth" "got $STATUS"
 fi
 
-# -----------------------------------------------------------
-# 11. 404 for unknown routes
-# -----------------------------------------------------------
-echo "1️⃣2️⃣ Unknown route → 404"
-STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-  -H "Origin: $ORIGIN" \
-  "$WORKER_URL/nonexistent")
-[ "$STATUS" = "404" ] && pass "Unknown → 404" || fail "Unknown route" "got $STATUS"
+# ============================================================
+section "8. Misc"
+# ============================================================
+STATUS=$(curl "${CURL_OPTS[@]}" -o /dev/null -w "%{http_code}" \
+  -H "Origin: $ORIGIN" "$WORKER_URL/nonexistent")
+[ "$STATUS" = "404" ] && pass "Unknown route → 404" || fail "404 route" "got $STATUS"
 
-# -----------------------------------------------------------
-# Summary
-# -----------------------------------------------------------
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Results: $PASSED/$TOTAL passed, $FAILED failed"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+if [ -n "$SITE_URL" ]; then
+  HTML=$(curl "${CURL_OPTS[@]}" "$SITE_URL/125" || true)
+  if printf '%s' "$HTML" | grep -q 'Foto'; then
+    pass "Frontend $SITE_URL/125 reachable"
+  else
+    fail "Frontend" "could not fetch /125"
+  fi
+fi
 
-rm -f /tmp/smoketest.jpg /tmp/smoketest-real.jpg
-[ "$FAILED" -eq 0 ] && exit 0 || exit 1
+# ============================================================
+printf "\n${B}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${N}\n"
+printf "${B}  Results: ${G}%d${N}/%d passed" "$PASS" "$TOTAL"
+[ "$FAIL" -gt 0 ] && printf ", ${R}%d failed${N}" "$FAIL"
+printf "\n${B}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${N}\n"
+
+[ "$FAIL" -eq 0 ]

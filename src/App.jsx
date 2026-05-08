@@ -53,7 +53,7 @@ async function processImage(file) {
   try {
     const [original, thumb] = await Promise.all([
       resizeToBlob(img, 3200, 0.92),
-      resizeToBlob(img, 250, 0.65),
+      resizeToBlob(img, 200, 0.55),
     ]);
     return { original, thumb };
   } finally {
@@ -174,7 +174,7 @@ function LandingRedirect() {
 function Celebration() {
   const [pieces] = useState(() => {
     const colors = ["#F4B324", "#ff6b6b", "#4ecdc4", "#45b7d1", "#ff9ff3", "#a29bfe", "#55efc4", "#fab1a0", "#fd79a8", "#e17055"];
-    return Array.from({ length: 50 }, (_, i) => ({
+    return Array.from({ length: 40 }, (_, i) => ({
       id: i,
       color: colors[i % colors.length],
       left: Math.random() * 100,
@@ -274,7 +274,11 @@ function HomePage() {
   const toastTimer = useRef(null);
 
   useEffect(() => {
-    localStorage.setItem("progress", JSON.stringify(done));
+    try {
+      localStorage.setItem("progress", JSON.stringify(done));
+    } catch {
+      // localStorage may be full or unavailable (e.g. private browsing) — silently ignore
+    }
   }, [done]);
 
   const completed = Object.values(done).filter(Boolean).length;
@@ -509,13 +513,38 @@ function UploadModal({ challenge, onClose, onSuccess, userName, existingIdempote
     };
   }, [preview]);
 
+  const modalRef = useRef(null);
+
   useEffect(() => {
     document.body.style.overflow = "hidden";
+
+    // Focus trap: keep focus inside the modal
+    function handleKeyDown(e) {
+      if (e.key === "Escape" && !uploading) {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab" || !modalRef.current) return;
+      const focusable = modalRef.current.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.body.style.overflow = "";
+      document.removeEventListener("keydown", handleKeyDown);
       if (xhrRef.current) xhrRef.current.abort();
     };
-  }, []);
+  }, [uploading, onClose]);
 
   function handleFile(e) {
     const file = e.target.files?.[0];
@@ -636,10 +665,10 @@ function UploadModal({ challenge, onClose, onSuccess, userName, existingIdempote
   }
 
   return (
-    <div className="modal" onClick={handleClose}>
-      <div className="modal-box slide-up" onClick={(e) => e.stopPropagation()}>
+    <div className="modal" onClick={handleClose} role="dialog" aria-modal="true" aria-labelledby="upload-modal-title">
+      <div className="modal-box slide-up" ref={modalRef} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3>
+          <h3 id="upload-modal-title">
             {challenge.emoji} {challenge.title}
           </h3>
           {!uploading && (

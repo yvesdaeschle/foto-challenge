@@ -653,9 +653,10 @@ button:disabled {
 }
 
 .confetti-piece {
-  position: absolute;
+  position: fixed;
   top: -20px;
   border-radius: 2px;
+  z-index: 91;
   -webkit-animation-name: confetti-rain;
           animation-name: confetti-rain;
   -webkit-animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1);
@@ -666,7 +667,6 @@ button:disabled {
           animation-fill-mode: forwards;
   -webkit-backface-visibility: hidden;
           backface-visibility: hidden;
-  will-change: transform, opacity;
 }
 
 .confetti-shape-1 {
@@ -706,14 +706,14 @@ button:disabled {
    custom properties in keyframes; older versions ignore the variable and
    fall back to the default rotation, which is still visible motion. */
 @-webkit-keyframes confetti-rain {
-  0%   { -webkit-transform: translate3d(0, 0, 0) rotate(0deg);                       opacity: 1; }
-  90%  {                                                                              opacity: 1; }
-  100% { -webkit-transform: translate3d(0, 110vh, 0) rotate(var(--rot-end, 540deg)); opacity: 0; }
+  0%   { -webkit-transform: translateY(0) rotate(0deg);      opacity: 1; }
+  90%  {                                                      opacity: 1; }
+  100% { -webkit-transform: translateY(2000px) rotate(var(--rot-end, 540deg)); opacity: 0; }
 }
 @keyframes confetti-rain {
-  0%   { transform: translate3d(0, 0, 0) rotate(0deg);                       opacity: 1; }
-  90%  {                                                                      opacity: 1; }
-  100% { transform: translate3d(0, 110vh, 0) rotate(var(--rot-end, 540deg)); opacity: 0; }
+  0%   { transform: translateY(0) rotate(0deg);      opacity: 1; }
+  90%  {                                              opacity: 1; }
+  100% { transform: translateY(2000px) rotate(var(--rot-end, 540deg)); opacity: 0; }
 }
 
 /* ==================== ERROR ==================== */

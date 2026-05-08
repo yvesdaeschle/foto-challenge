@@ -506,13 +506,18 @@ function requireAdmin(request, env) {
 }
 
 function timingSafeEqual(a, b) {
-  if (a.length !== b.length) return false;
   const enc = new TextEncoder();
   const bufA = enc.encode(a);
   const bufB = enc.encode(b);
-  let result = 0;
-  for (let i = 0; i < bufA.length; i++) {
-    result |= bufA[i] ^ bufB[i];
+  // Always compare against the longer length to avoid leaking token length via timing
+  const len = Math.max(bufA.length, bufB.length);
+  const paddedA = new Uint8Array(len);
+  const paddedB = new Uint8Array(len);
+  paddedA.set(bufA);
+  paddedB.set(bufB);
+  let result = bufA.length ^ bufB.length; // non-zero if lengths differ
+  for (let i = 0; i < len; i++) {
+    result |= paddedA[i] ^ paddedB[i];
   }
   return result === 0;
 }

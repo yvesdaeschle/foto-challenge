@@ -190,3 +190,11 @@ Der Worker braucht einen R2-Bucket `foto-challenge-uploads` (in `wrangler.toml` 
 3. **R2 Bucket löschen:** Dashboard → R2 → `foto-challenge-uploads` → Delete
 4. **Pages deaktivieren:** Dashboard → Pages → Projekt löschen
 5. **Workers Paid Plan kündigen:** Dashboard → Workers & Pages → Plans → Downgrade auf Free
+
+# my console commands
+
+yves@yves foto-challenge % chmod +x smoke-test.sh                                                     
+yves@yves foto-challenge % LOAD_COUNT=100 LOAD_PARALLEL=8 ADMIN_TOKEN=xxx ./smoke-test.sh
+
+yves@yves foto-challenge % chmod +x download-all.sh 
+yves@yves foto-challenge % ./download-all.sh 

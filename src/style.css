@@ -1169,6 +1169,33 @@ button:disabled {
   animation: spin 1s linear infinite;
 }
 
+/* ==================== SKELETON LOADERS ==================== */
+
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+}
+
+@keyframes skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.admin-skeleton {
+  padding-top: 16px;
+}
+
+.gallery-skeleton-item {
+  aspect-ratio: 1;
+  border-radius: 10px;
+  background: #f0f0f0;
+}
+
 /* ==================== MOBILE ==================== */
 
 @media (max-width: 480px) {

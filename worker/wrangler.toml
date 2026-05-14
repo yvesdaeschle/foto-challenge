@@ -7,5 +7,16 @@ binding = "PHOTOS_BUCKET"
 bucket_name = "foto-challenge-uploads"
 
 [vars]
-ALLOWED_ORIGIN = "https://foto-challenge.pages.dev"
 MAX_FILE_SIZE_MB = "12"
+
+# Production environment
+[env.production]
+vars = { ALLOWED_ORIGIN = "https://foto-challenge.pages.dev" }
+
+# Staging environment
+[env.staging]
+vars = { ALLOWED_ORIGIN = "https://staging.foto-challenge.pages.dev" }
+
+# Development environment
+[env.development]
+vars = { ALLOWED_ORIGIN = "http://localhost:5173" }

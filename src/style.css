@@ -155,7 +155,7 @@ body {
 
 .progress-bar-wrap {
   position: sticky;
-  top: 0;
+  top: calc(env(safe-area-inset-top, 16px) + 8px);
   z-index: 30;
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(8px);
@@ -640,7 +640,8 @@ button:disabled {
   position: fixed;
   bottom: calc(env(safe-area-inset-bottom, 16px) + 20px);
   left: 50%;
-  transform: translateX(-50%) translateY(200%);
+  transform: translateX(-50%) translateY(120px);
+  opacity: 0;
   background: var(--green);
   color: white;
   padding: 12px 22px;
@@ -652,12 +653,13 @@ button:disabled {
   gap: 8px;
   z-index: 100;
   box-shadow: var(--shadow-lg);
-  transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.4s ease;
   pointer-events: none;
 }
 
 .toast--show {
   transform: translateX(-50%) translateY(0);
+  opacity: 1;
 }
 
 /* ==================== CELEBRATION ==================== */

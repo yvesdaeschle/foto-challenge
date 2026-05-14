@@ -2,13 +2,6 @@ const jsonHeaders = {
   "content-type": "application/json; charset=utf-8"
 };
 
-const securityHeaders = {
-  "x-content-type-options": "nosniff",
-  "x-frame-options": "DENY",
-  "x-xss-protection": "1; mode=block",
-  "content-security-policy": "default-src 'none'; frame-ancestors 'none'"
-};
-
 const allowedChallenges = new Set([
   "01-new-faces",
   "02-detail-love",
@@ -18,12 +11,6 @@ const allowedChallenges = new Set([
 ]);
 
 const PARTY_PREFIX = "party";
-
-// Simple rate limiting: track requests per IP in memory
-// In production, use Durable Objects for persistent rate limiting
-const rateLimitStore = new Map();
-const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 30; // 30 requests per minute per IP
 
 export default {
   async fetch(request, env) {
@@ -36,34 +23,17 @@ export default {
       });
     }
 
-    // Rate limiting for uploads to prevent abuse
-    if ((request.method === "POST" && url.pathname === "/upload") ||
-        (request.method === "POST" && url.pathname === "/upload-party")) {
-      const clientIp = request.headers.get("cf-connecting-ip") || "unknown";
-      const rateLimitCheck = checkRateLimit(clientIp);
-      if (!rateLimitCheck.allowed) {
-        return withCors(
-          Response.json(
-            { error: "Too many requests. Please try again later." },
-            { status: 429, headers: jsonHeaders }
-          ),
-          request,
-          env
-        );
-      }
-    }
-
     try {
       if (request.method === "POST" && url.pathname === "/upload") {
-        return addSecurityHeaders(withCors(await handleUpload(request, env), request, env));
+        return withCors(await handleUpload(request, env), request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/upload-party") {
-        return addSecurityHeaders(withCors(await handlePartyUpload(request, env), request, env));
+        return withCors(await handlePartyUpload(request, env), request, env);
       }
 
       if (request.method === "GET" && url.pathname === "/photos") {
-        return addSecurityHeaders(withCors(await handleListPhotos(request, env), request, env));
+        return withCors(await handleListPhotos(request, env), request, env);
       }
 
       // GET /photo/thumb/[KEY] — 250px thumbnail
@@ -91,31 +61,26 @@ export default {
 
       // DELETE /photos — delete all photos in one call
       if (request.method === "DELETE" && url.pathname === "/photos") {
-        return addSecurityHeaders(withCors(await handleDeleteAllPhotos(request, env), request, env));
+        return withCors(await handleDeleteAllPhotos(request, env), request, env);
       }
 
       // DELETE /photo/[KEY] — delete both original + thumb
       if (request.method === "DELETE" && url.pathname.startsWith("/photo/")) {
         const key = decodeURIComponent(url.pathname.slice("/photo/".length));
-        return addSecurityHeaders(withCors(await handleDeletePhoto(request, env, key), request, env));
+        return withCors(await handleDeletePhoto(request, env, key), request, env);
       }
 
       return withCors(
-        Response.json({ error: "Not found" }, { status: 404, headers: jsonHeaders }),
+        Response.json({ error: "Not found" }, { status: 404 }),
         request,
         env
       );
     } catch (error) {
-      // Log error for monitoring (in production, send to error tracking service)
-      console.error("Worker error:", error.message, error.stack);
-      return addSecurityHeaders(withCors(
-        Response.json(
-          { error: error.message || "Internal server error" },
-          { status: 500, headers: jsonHeaders }
-        ),
+      return withCors(
+        Response.json({ error: error.message || "Internal server error" }, { status: 500 }),
         request,
         env
-      ));
+      );
     }
   }
 };
@@ -653,51 +618,6 @@ function withCors(response, request, env) {
     statusText: response.statusText,
     headers
   });
-}
-
-function addSecurityHeaders(response) {
-  const headers = new Headers(response.headers);
-  Object.entries(securityHeaders).forEach(([key, value]) => headers.set(key, value));
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers
-  });
-}
-
-function checkRateLimit(clientIp) {
-  const now = Date.now();
-  const record = rateLimitStore.get(clientIp);
-
-  if (!record) {
-    // First request from this IP
-    rateLimitStore.set(clientIp, { count: 1, windowStart: now });
-    // Cleanup old entries (simple garbage collection)
-    if (rateLimitStore.size > 1000) {
-      for (const [ip, data] of rateLimitStore.entries()) {
-        if (now - data.windowStart > RATE_LIMIT_WINDOW_MS) {
-          rateLimitStore.delete(ip);
-        }
-      }
-    }
-    return { allowed: true };
-  }
-
-  const timeSinceWindowStart = now - record.windowStart;
-
-  if (timeSinceWindowStart > RATE_LIMIT_WINDOW_MS) {
-    // New window, reset counter
-    rateLimitStore.set(clientIp, { count: 1, windowStart: now });
-    return { allowed: true };
-  }
-
-  if (record.count >= RATE_LIMIT_MAX_REQUESTS) {
-    return { allowed: false, retryAfter: Math.ceil((RATE_LIMIT_WINDOW_MS - timeSinceWindowStart) / 1000) };
-  }
-
-  // Increment and allow
-  record.count++;
-  return { allowed: true };
 }
 
 function sanitizeText(value, maxLength) {

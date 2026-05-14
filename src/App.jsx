@@ -47,10 +47,17 @@ function resizeToBlob(img, maxSize, quality) {
 }
 
 async function processImage(file) {
-  // createImageBitmap respects EXIF orientation (prevents rotated photos from iOS/Android)
-  const img = typeof createImageBitmap === "function"
-    ? await createImageBitmap(file)
-    : await loadImage(file);
+  let img;
+  try {
+    if (typeof createImageBitmap === "function") {
+      img = await createImageBitmap(file);
+    } else {
+      img = await loadImage(file);
+    }
+  } catch {
+    img = await loadImage(file);
+  }
+
   try {
     const [original, thumb] = await Promise.all([
       resizeToBlob(img, 3200, 0.92),

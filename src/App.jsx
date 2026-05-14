@@ -34,24 +34,12 @@ function resizeToBlob(img, maxSize, quality) {
     const scale = Math.min(1, maxSize / Math.max(width, height));
     const w = Math.round(width * scale);
     const h = Math.round(height * scale);
-    
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
-    
     const ctx = canvas.getContext("2d");
-    
-    // Optional: Für schwache Geräte das Image-Smoothing anpassen
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "medium"; // 'high' kostet extrem viel RAM/CPU
-    
     ctx.drawImage(img, 0, 0, w, h);
-    
     canvas.toBlob((blob) => {
-      // WICHTIG: RAM sofort freigeben, noch bevor der Garbage Collector greift!
-      canvas.width = 0;
-      canvas.height = 0;
-      
       if (!blob) return reject(new Error("Bildverarbeitung fehlgeschlagen"));
       resolve(blob);
     }, "image/jpeg", quality);
@@ -59,27 +47,27 @@ function resizeToBlob(img, maxSize, quality) {
 }
 
 async function processImage(file) {
-  // createImageBitmap respektiert EXIF (damit Hochformat nicht kippt)
-  const img = typeof createImageBitmap === "function"
-    ? await createImageBitmap(file)
-    : await loadImage(file);
-    
+  let img;
   try {
-    // 1. Sequenzielle Verarbeitung statt Promise.all()
-    // 2. Maximalgröße auf 1920px und Qualität auf 0.85 reduziert
-    const original = await resizeToBlob(img, 1920, 0.85);
-    
-    // Erst wenn das Original fertig im RAM verpackt und das Canvas gelöscht ist,
-    // machen wir uns an das Thumbnail.
-    const thumb = await resizeToBlob(img, 200, 0.55);
-    
+    if (typeof createImageBitmap === "function") {
+      img = await createImageBitmap(file);
+    } else {
+      img = await loadImage(file);
+    }
+  } catch {
+    img = await loadImage(file);
+  }
+
+  try {
+    const [original, thumb] = await Promise.all([
+      resizeToBlob(img, 3200, 0.92),
+      resizeToBlob(img, 200, 0.55),
+    ]);
     return { original, thumb };
   } finally {
-    // Speicher des Ursprungsbildes wieder freigeben
     if (typeof img.close === "function") img.close();
   }
 }
-
 
 function generateIdempotencyKey() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
